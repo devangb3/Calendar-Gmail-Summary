@@ -6,11 +6,13 @@ import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import google.generativeai as genai
 from dotenv import load_dotenv
-from pymongo import MongoClient # Import MongoClient
+from pymongo import MongoClient, ReturnDocument
 from werkzeug.serving import run_simple
 from werkzeug.middleware.proxy_fix import ProxyFix
 from oauthlib.oauth2 import WebApplicationClient
 import requests
+import datetime
+from datetime import timedelta
 
 load_dotenv() # Load environment variables from .env file
 
@@ -27,17 +29,23 @@ CORS(app,
 
 # --- MongoDB Configuration ---
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://127.0.0.1:27017/") # Default to local MongoDB
-print(f"Attempting to connect to MongoDB with URI: {MONGO_URI}") # <-- Add logging here
+print(f"Attempting to connect to MongoDB with URI: {MONGO_URI}")
 try:
     mongo_client = MongoClient(MONGO_URI)
     db = mongo_client['calendar_summary_db'] # Select your database
-    # You can test the connection here if needed, e.g., by listing collections
+    users_collection = db['users'] # Collection for user data
+    summaries_collection = db['summaries'] # Collection for cached summaries
+    # Create index on user_id for faster lookups
+    users_collection.create_index("user_id", unique=True)
+    summaries_collection.create_index([("user_id", 1), ("generated_at", -1)]) # Index for summary lookup
     mongo_client.server_info() # Raises an exception if connection fails
     print("Successfully connected to MongoDB.")
 except Exception as e:
     print(f"Error connecting to MongoDB: {e}")
     mongo_client = None
     db = None
+    users_collection = None
+    summaries_collection = None
 
 # --- OAuth Configuration ---
 CLIENT_SECRETS_FILE = "client_secret.json" # Download this from Google Cloud Console
@@ -182,11 +190,35 @@ def oauth2callback():
         ]
     )
 
-    # Store credentials and user info in session
-    session['credentials'] = credentials_to_dict(credentials)
-    session['user_id'] = user_info.get("sub")
-    session['user_email'] = user_info.get("email")
-    session['user_name'] = user_info.get("name")
+    # --- Store/Update User in MongoDB ---
+    user_id = user_info.get("sub")
+    user_email = user_info.get("email")
+    user_name = user_info.get("name")
+    credentials_dict = credentials_to_dict(credentials)
+
+    if db is not None and users_collection is not None:
+        try:
+            users_collection.update_one(
+                {'user_id': user_id},
+                {'$set': {
+                    'email': user_email,
+                    'name': user_name,
+                    'credentials': credentials_dict,
+                    'updated_at': datetime.datetime.utcnow()
+                },
+                 '$setOnInsert': {'created_at': datetime.datetime.utcnow()}}, # Set created_at only on insert
+                upsert=True # Insert if not found, update if found
+            )
+            print(f"User {user_id} data stored/updated in MongoDB.")
+        except Exception as e:
+            print(f"Error storing/updating user data in MongoDB: {e}")
+
+    # Store only user_id in session
+    session['user_id'] = user_id
+    # Clear old credentials from session if they exist
+    session.pop('credentials', None)
+    session.pop('user_email', None)
+    session.pop('user_name', None)
 
     # Redirect to frontend
     frontend_url = os.environ.get("FRONTEND_URL", "https://localhost:3001")
@@ -194,52 +226,95 @@ def oauth2callback():
 
 @app.route('/api/check_auth')
 def check_auth():
-    if 'credentials' not in session:
+    # Check for user_id in session
+    if 'user_id' not in session:
         return jsonify({"isAuthenticated": False})
-    # You might want to add logic here to check if the token is still valid
-    # or refresh it if necessary.
+    # Optionally, you could check if the user_id still exists in the DB
     return jsonify({"isAuthenticated": True})
 
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
-    session.pop('credentials', None)
+    # Clear user_id from session
+    session.pop('user_id', None)
+    # Clear other potential session data if needed
+    session.clear()
     return jsonify({"message": "Logged out successfully"})
 
 
 @app.route('/api/summary')
 def get_summary():
-    if 'credentials' not in session:
+    # Check if user is logged in via session
+    if 'user_id' not in session:
         return jsonify({"error": "User not authenticated"}), 401
+
+    user_id = session['user_id']
 
     if not model:
         return jsonify({"error": "Gemini API not configured"}), 500
 
-    if db is None:
+    if db is None or users_collection is None or summaries_collection is None:
         return jsonify({"error": "Database connection failed"}), 500
 
     try:
-        # Create credentials from session data
+        # --- Check for Cached Summary ---
+        one_hour_ago = datetime.datetime.utcnow() - timedelta(hours=1)
+        cached_summary = summaries_collection.find_one(
+            {'user_id': user_id, 'generated_at': {'$gte': one_hour_ago}},
+            sort=[('generated_at', -1)] # Get the most recent one within the hour
+        )
+
+        if cached_summary:
+            print(f"Returning cached summary for user {user_id}")
+            return jsonify({
+                "summary": cached_summary['summary_text'],
+                "calendarLink": "https://calendar.google.com/",
+                "gmailLink": "https://mail.google.com/",
+                "cached": True, # Indicate that this is a cached response
+                "generated_at": cached_summary['generated_at']
+            })
+
+        # --- No Cache Found or Cache Expired - Fetch User Credentials ---
+        print(f"No recent cache found for user {user_id}. Generating new summary.")
+        user_data = users_collection.find_one({'user_id': user_id})
+
+        if not user_data or 'credentials' not in user_data:
+            print(f"No credentials found for user {user_id} in DB.")
+            session.clear() # Clear session as user data is missing
+            return jsonify({"error": "User credentials not found, please log in again"}), 401
+
+        # Create credentials from stored data
         credentials = google.oauth2.credentials.Credentials(
-            **session['credentials']
+            **user_data['credentials']
         )
 
         # Check if the token needs refreshing
+        token_refreshed = False
         if credentials.expired and credentials.refresh_token:
             try:
+                print(f"Refreshing token for user {user_id}")
                 credentials.refresh(google.auth.transport.requests.Request())
-                session['credentials'] = credentials_to_dict(credentials)
+                # --- Update Refreshed Credentials in MongoDB ---
+                new_credentials_dict = credentials_to_dict(credentials)
+                users_collection.update_one(
+                    {'user_id': user_id},
+                    {'$set': {'credentials': new_credentials_dict, 'updated_at': datetime.datetime.utcnow()}}
+                )
+                token_refreshed = True
+                print(f"Token refreshed and updated in DB for user {user_id}")
             except Exception as e:
-                print(f"Error refreshing token: {e}")
+                print(f"Error refreshing token for user {user_id}: {e}")
+                # If refresh fails, clear session and force re-login
                 session.clear()
+                # Optionally remove the invalid credentials from DB or mark them as invalid
+                users_collection.update_one({'user_id': user_id}, {'$unset': {'credentials': ""}})
                 return jsonify({"error": "Failed to refresh token, please log in again"}), 401
 
         # --- Fetch Calendar Events ---
         calendar_service = googleapiclient.discovery.build('calendar', 'v3', credentials=credentials)
-        # Example: Get events for the next 7 days
-        import datetime
-        now = datetime.datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
-        time_max = (datetime.datetime.utcnow() + datetime.timedelta(days=7)).isoformat() + 'Z'
+        import datetime as dt # Use alias to avoid conflict with module name
+        now = dt.datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
+        time_max = (dt.datetime.utcnow() + dt.timedelta(days=7)).isoformat() + 'Z'
 
         print('Getting the upcoming 10 events')
         events_result = calendar_service.events().list(calendarId='primary', timeMin=now,
@@ -257,7 +332,6 @@ def get_summary():
 
         # --- Fetch Gmail Messages ---
         gmail_service = googleapiclient.discovery.build('gmail', 'v1', credentials=credentials)
-        # Example: Get recent unread emails (adjust query as needed)
         results = gmail_service.users().messages().list(userId='me', labelIds=['INBOX', 'UNREAD'], maxResults=5).execute()
         messages = results.get('messages', [])
 
@@ -281,30 +355,40 @@ def get_summary():
         print("------------------------------\n")
 
         response = model.generate_content(full_prompt)
+        summary_text = response.text # Store the generated text
 
         print("\n--- Received Response from Gemini ---")
-        print(response.text)
+        print(summary_text)
         print("-----------------------------------\n")
 
-        # --- Store summary in MongoDB (Example) ---
-        summary_collection = db['summaries'] # Select a collection
+        # --- Store New Summary in MongoDB Cache ---
+        current_time = datetime.datetime.utcnow()
         summary_doc = {
-            "user_id": session.get('user_id', 'unknown'), # Use user_id from session
-            "summary_text": response.text,
-            "generated_at": datetime.datetime.utcnow()
+            "user_id": user_id,
+            "summary_text": summary_text,
+            "generated_at": current_time,
+            "prompt_used": full_prompt # Optionally store the prompt
         }
-        summary_collection.insert_one(summary_doc) # Uncomment to actually store the data
-        print("Summary stored in MongoDB.")
+        # Insert the new summary
+        summaries_collection.insert_one(summary_doc)
+        print(f"New summary for user {user_id} stored in MongoDB cache.")
 
 
         return jsonify({
-            "summary": response.text,
+            "summary": summary_text,
             "calendarLink": "https://calendar.google.com/",
-            "gmailLink": "https://mail.google.com/"
+            "gmailLink": "https://mail.google.com/",
+            "cached": False, # Indicate this is a newly generated response
+            "generated_at": current_time
         })
 
+    except google.auth.exceptions.RefreshError as re:
+        print(f"Credentials refresh error for user {user_id}: {re}")
+        session.clear()
+        users_collection.update_one({'user_id': user_id}, {'$unset': {'credentials': ""}})
+        return jsonify({"error": "Authentication expired or invalid, please log in again"}), 401
     except Exception as e:
-        print(f"Error fetching data or generating summary: {e}")
+        print(f"Error fetching data or generating summary for user {user_id}: {e}")
         # Consider more specific error handling
         return jsonify({"error": "Failed to get summary", "details": str(e)}), 500
 
