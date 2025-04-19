@@ -293,8 +293,8 @@ def get_summary():
             "summary_text": response.text,
             "generated_at": datetime.datetime.utcnow()
         }
-        # summary_collection.insert_one(summary_doc) # Uncomment to actually store the data
-        # print("Summary stored in MongoDB.")
+        summary_collection.insert_one(summary_doc) # Uncomment to actually store the data
+        print("Summary stored in MongoDB.")
 
 
         return jsonify({
