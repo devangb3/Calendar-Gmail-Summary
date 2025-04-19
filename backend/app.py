@@ -7,6 +7,10 @@ import googleapiclient.discovery
 import google.generativeai as genai
 from dotenv import load_dotenv
 from pymongo import MongoClient # Import MongoClient
+from werkzeug.serving import run_simple
+from werkzeug.middleware.proxy_fix import ProxyFix
+from oauthlib.oauth2 import WebApplicationClient
+import requests
 
 load_dotenv() # Load environment variables from .env file
 
@@ -17,7 +21,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' # Or 'None' if frontend and backen
 # Update CORS configuration to allow requests from both ports during transition
 CORS(app, 
      supports_credentials=True, 
-     origins=["http://localhost:3000", "http://localhost:3001"],
+     origins=["http://localhost:3000", "http://localhost:3001", "https://localhost:3001"],
      allow_headers=["Content-Type", "Authorization"],
      methods=["GET", "POST", "OPTIONS"])
 
@@ -53,72 +57,140 @@ else:
     print("Warning: GEMINI_API_KEY not found in environment variables.")
     model = None
 
+# --- Google OAuth Configuration ---
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '0'  # Require HTTPS
+# Load client ID and secret from environment variables
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = "https://localhost:5000/oauth2callback"
+
+# Check if credentials are loaded
+if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+    raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in the environment variables.")
+
+client = WebApplicationClient(GOOGLE_CLIENT_ID)
+
+# Add these constants after your imports
+GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
+
+def get_google_provider_cfg():
+    try:
+        return requests.get(GOOGLE_DISCOVERY_URL).json()
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to fetch Google provider config: {e}")
+        return None
+
+# --- Helper Functions ---
+def credentials_to_dict(credentials):
+    """Convert Google OAuth2 credentials to a dictionary format"""
+    return {
+        'token': credentials.token,
+        'refresh_token': credentials.refresh_token,
+        'token_uri': credentials.token_uri,
+        'client_id': GOOGLE_CLIENT_ID,
+        'client_secret': GOOGLE_CLIENT_SECRET,
+        'scopes': credentials.scopes
+    }
+
 # --- Routes ---
 
 @app.route('/')
 def index():
     return "Backend is running!"
 
-@app.route('/auth/google')
-def auth_google():
-    flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE, scopes=SCOPES)
-    # The URI created here must exactly match one of the authorized redirect URIs
-    # for the OAuth 2.0 client, which you configured in the API Console. If this
-    # value doesn't match an authorized URI, you will get a 'redirect_uri_mismatch'
-    # error.
-    flow.redirect_uri = url_for('oauth2callback', _external=True)
+@app.route("/auth/google")
+def google_auth():
+    google_provider_cfg = get_google_provider_cfg()
+    if not google_provider_cfg:
+        return "Error: Failed to fetch Google provider configuration", 500
 
-    authorization_url, state = flow.authorization_url(
-        # Enable offline access so that you can refresh an access token without
-        # re-prompting the user for permission. Recommended for web server apps.
-        access_type='offline',
-        # Enable incremental authorization. Recommended as a best practice.
-        include_granted_scopes='true')
+    authorization_endpoint = google_provider_cfg["authorization_endpoint"]
 
-    # Store the state so the callback can verify the auth server response.
-    session['state'] = state
-
-    return redirect(authorization_url)
+    # Use library to construct the request for login with all required scopes
+    request_uri = client.prepare_request_uri(
+        authorization_endpoint,
+        redirect_uri="https://localhost:5000/oauth2callback",
+        scope=[
+            "openid",
+            "email",
+            "profile",
+            "https://www.googleapis.com/auth/calendar.readonly",
+            "https://www.googleapis.com/auth/gmail.readonly"
+        ],
+        access_type="offline",  # Request a refresh token
+        prompt="consent"  # Force consent screen to ensure getting refresh token
+    )
+    return redirect(request_uri)
 
 @app.route('/oauth2callback')
 def oauth2callback():
-    # Specify the state when creating the flow in the callback so that it can
-    # verified in the authorization server response.
-    state = session['state']
+    # Get authorization code Google sent back to you
+    code = request.args.get("code")
 
-    flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE, scopes=SCOPES, state=state)
-    flow.redirect_uri = url_for('oauth2callback', _external=True)
+    # Find out what URL to hit to get tokens
+    google_provider_cfg = get_google_provider_cfg()
+    if not google_provider_cfg:
+        return "Error: Failed to fetch Google provider configuration", 500
+    token_endpoint = google_provider_cfg["token_endpoint"]
 
-    # Use the authorization server's response to fetch the OAuth 2.0 tokens.
-    authorization_response = request.url
+    # Prepare and send request to get tokens
+    token_url, headers, body = client.prepare_token_request(
+        token_endpoint,
+        authorization_response=request.url,
+        redirect_url=request.base_url,
+        code=code
+    )
+    
+    token_response = requests.post(
+        token_url,
+        headers=headers,
+        data=body,
+        auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
+    )
+
+    # Parse the tokens!
     try:
-        flow.fetch_token(authorization_response=authorization_response)
+        client.parse_request_body_response(token_response.text)
     except Exception as e:
-        print(f"Error fetching token: {e}")
-        # Handle specific exceptions like oauthlib.oauth2.rfc6749.errors.InvalidGrantError
-        return jsonify({"error": "Failed to fetch token", "details": str(e)}), 400
+        print(f"Error parsing token response: {e}")
+        print(f"Response status: {token_response.status_code}")
+        print(f"Response text: {token_response.text}")
+        return jsonify({"error": "Failed to parse token response", "details": str(e)}), 400
 
+    # Now that we have tokens, let's find and store user info
+    userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
+    uri, headers, body = client.add_token(userinfo_endpoint)
+    userinfo_response = requests.get(uri, headers=headers, data=body)
+    user_info = userinfo_response.json()
 
-    # Store credentials in the session.
-    # ACTION ITEM: In a production app, you likely want to save these
-    #              credentials in a persistent database instead.
-    credentials = flow.credentials
-    session['credentials'] = {
-        'token': credentials.token,
-        'refresh_token': credentials.refresh_token,
-        'token_uri': credentials.token_uri,
-        'client_id': credentials.client_id,
-        'client_secret': credentials.client_secret,
-        'scopes': credentials.scopes
-    }
+    if userinfo_response.status_code != 200:
+        return jsonify({"error": "Failed to fetch user info"}), 500
 
-    # Redirect to the frontend summary page after successful login
-    # Make sure your frontend is running on this port
-    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3001")
+    # Create credentials object
+    credentials = google.oauth2.credentials.Credentials(
+        token=client.token['access_token'],
+        refresh_token=client.token.get('refresh_token'),
+        token_uri=google_provider_cfg['token_endpoint'],
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        scopes=[
+            'https://www.googleapis.com/auth/calendar.readonly',
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'openid',
+            'email',
+            'profile'
+        ]
+    )
+
+    # Store credentials and user info in session
+    session['credentials'] = credentials_to_dict(credentials)
+    session['user_id'] = user_info.get("sub")
+    session['user_email'] = user_info.get("email")
+    session['user_name'] = user_info.get("name")
+
+    # Redirect to frontend
+    frontend_url = os.environ.get("FRONTEND_URL", "https://localhost:3001")
     return redirect(f"{frontend_url}/summary")
-
 
 @app.route('/api/check_auth')
 def check_auth():
@@ -141,13 +213,26 @@ def get_summary():
         return jsonify({"error": "User not authenticated"}), 401
 
     if not model:
-         return jsonify({"error": "Gemini API not configured"}), 500
+        return jsonify({"error": "Gemini API not configured"}), 500
 
-    if db is None: # Check if MongoDB connection is available
+    if db is None:
         return jsonify({"error": "Database connection failed"}), 500
 
     try:
-        credentials = google.oauth2.credentials.Credentials(**session['credentials'])
+        # Create credentials from session data
+        credentials = google.oauth2.credentials.Credentials(
+            **session['credentials']
+        )
+
+        # Check if the token needs refreshing
+        if credentials.expired and credentials.refresh_token:
+            try:
+                credentials.refresh(google.auth.transport.requests.Request())
+                session['credentials'] = credentials_to_dict(credentials)
+            except Exception as e:
+                print(f"Error refreshing token: {e}")
+                session.clear()
+                return jsonify({"error": "Failed to refresh token, please log in again"}), 401
 
         # --- Fetch Calendar Events ---
         calendar_service = googleapiclient.discovery.build('calendar', 'v3', credentials=credentials)
@@ -202,27 +287,15 @@ def get_summary():
         print("-----------------------------------\n")
 
         # --- Store summary in MongoDB (Example) ---
-        # You might want to store the user ID or some identifier along with the summary
         summary_collection = db['summaries'] # Select a collection
         summary_doc = {
-            "user_id": session.get('user_id', 'unknown'), # Example: Get user ID if stored in session
+            "user_id": session.get('user_id', 'unknown'), # Use user_id from session
             "summary_text": response.text,
             "generated_at": datetime.datetime.utcnow()
         }
         # summary_collection.insert_one(summary_doc) # Uncomment to actually store the data
         # print("Summary stored in MongoDB.")
 
-
-        # --- Update session credentials if refreshed ---
-        # google-auth automatically refreshes the token if necessary
-        session['credentials'] = {
-            'token': credentials.token,
-            'refresh_token': credentials.refresh_token,
-            'token_uri': credentials.token_uri,
-            'client_id': credentials.client_id,
-            'client_secret': credentials.client_secret,
-            'scopes': credentials.scopes
-        }
 
         return jsonify({
             "summary": response.text,
@@ -237,9 +310,10 @@ def get_summary():
 
 
 if __name__ == '__main__':
-    # Make sure to run with HTTPS if deploying or if frontend/backend are on different domains
-    # For development, HTTP is usually fine if both are on localhost
-    # Example using self-signed certs (pip install pyopenssl):
-    # context = ('adhoc') # Creates cert.pem and key.pem
-    # app.run(debug=True, ssl_context=context, port=5000)
-    app.run(debug=True, port=5000) # Run on HTTP for local development
+    # Enable HTTPS for development
+    app.wsgi_app = ProxyFix(app.wsgi_app)
+    run_simple('localhost', 
+               5000, 
+               app,
+               ssl_context='adhoc',  # This creates a self-signed certificate
+               use_reloader=True)

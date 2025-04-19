@@ -16,7 +16,7 @@ function SummaryPage() {
       try {
         setLoading(true);
         console.log("Fetching summary...");
-        const response = await axios.get('http://localhost:5000/api/summary'); // Ensure this matches your backend URL
+        const response = await axios.get('https://localhost:5000/api/summary'); // Ensure this matches your backend URL
         setSummaryData(response.data);
         setError(null);
       } catch (err) {
@@ -38,7 +38,7 @@ function SummaryPage() {
 
   const handleLogout = async () => {
     try {
-      await axios.post('http://localhost:5000/api/logout'); // Ensure this matches your backend URL
+      await axios.post('https://localhost:5000/api/logout'); // Ensure this matches your backend URL
       navigate('/login');
     } catch (err) {
       console.error("Error logging out:", err);

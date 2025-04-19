@@ -27,9 +27,9 @@ const LoginButton = styled(Button)(({ theme }) => ({
 }));
 
 function LoginPage() {
-  const handleLogin = () => {
-    window.location.href = 'http://localhost:5000/auth/google';
-  };
+  function handleLogin() {
+    window.location.href = 'https://localhost:5000/auth/google';
+  }
 
   return (
     <Container maxWidth="sm">
