@@ -3,7 +3,7 @@ import logger from './logger';
 
 // Use environment variables or default to HTTPS and port 3001
 const API_URL = process.env.REACT_APP_API_URL || 'https://localhost:5000';
-const FRONTEND_URL = process.env.REACT_APP_FRONTEND_URL || 'https://localhost:3001';
+const FRONTEND_URL = process.env.REACT_APP_FRONTEND_URL || 'https://localhost:3002';
 
 // Custom error class for API errors
 class ApiError extends Error {
