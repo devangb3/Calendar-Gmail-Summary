@@ -30,7 +30,7 @@ SCOPES = [
 
 # Gemini API Configuration
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = 'models/gemini-2.5-flash-preview-04-17'
+GEMINI_MODEL = 'models/gemini-2.0-flash'
 
 # CORS Configuration
 CORS_ORIGINS = ["http://localhost:3000", "http://localhost:3001", "https://localhost:3001"]

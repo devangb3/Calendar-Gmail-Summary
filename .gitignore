@@ -30,3 +30,4 @@ client_secret.json
 __pycache__/
 *.pyc
 *.log
+test_model.py

@@ -23,7 +23,7 @@ class GeminiService:
         try:
             summary_logger.info("Initializing Gemini service")
             genai.configure(api_key=GEMINI_API_KEY)
-            self.model = genai.GenerativeModel('models/gemini-2.5-flash-preview-04-17')
+            self.model = genai.GenerativeModel('models/gemini-2.0-flash')
             summary_logger.info("Gemini service initialized successfully")
         except Exception as e:
             log_error(summary_logger, e, "Failed to initialize Gemini service")
