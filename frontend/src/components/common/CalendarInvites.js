@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import PropTypes from 'prop-types';
 import {
   List,
   ListItem,
@@ -7,6 +8,7 @@ import {
   Button,
   Divider,
   Chip,
+  CircularProgress,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -14,18 +16,61 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import VideocamIcon from '@mui/icons-material/Videocam';
 import GroupIcon from '@mui/icons-material/Group';
 import RoomIcon from '@mui/icons-material/Room';
+import { calendar } from '../../utils/api';
+import logger from '../../utils/logger';
 
-function CalendarInvites({ invites = [] }) {
+function CalendarInvites({ invites = [], onInviteResponded }) {
+  const [respondingTo, setRespondingTo] = useState(null);
+
+  const handleResponse = async (inviteId, accept) => {
+    try {
+      setRespondingTo(inviteId);
+      if (accept) {
+        await calendar.acceptInvite(inviteId);
+      } else {
+        await calendar.declineInvite(inviteId);
+      }
+      if (onInviteResponded) {
+        onInviteResponded(inviteId, accept);
+      }
+    } catch (err) {
+      logger.error('Error responding to invite:', err);
+    } finally {
+      setRespondingTo(null);
+    }
+  };
+
+  const parseDateSafely = (dateObj) => {
+    if (!dateObj) return null;
+    try {
+      // Handle both string dates and Google Calendar date objects
+      const dateString = dateObj.dateTime || dateObj.date || dateObj;
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return null;
+      }
+      return date;
+    } catch (e) {
+      logger.error('Error parsing date:', dateObj, e);
+      return null;
+    }
+  };
+
   const formatTime = (dateString) => {
+    const date = parseDateSafely(dateString);
+    if (!date) return 'Time not available';
+    
     return new Intl.DateTimeFormat('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-    }).format(new Date(dateString));
+    }).format(date);
   };
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    const date = parseDateSafely(dateString);
+    if (!date) return 'Date not available';
+
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -43,9 +88,18 @@ function CalendarInvites({ invites = [] }) {
     }
   };
 
-  // Group events by date
+  // Group events by date, handling invalid dates
   const groupedInvites = invites.reduce((acc, invite) => {
-    const date = formatDate(invite.startTime);
+    if (!invite.start) {
+      // Handle invites without start time
+      if (!acc['Unscheduled']) {
+        acc['Unscheduled'] = [];
+      }
+      acc['Unscheduled'].push(invite);
+      return acc;
+    }
+
+    const date = formatDate(invite.start.dateTime || invite.start.date);
     if (!acc[date]) {
       acc[date] = [];
     }
@@ -78,7 +132,7 @@ function CalendarInvites({ invites = [] }) {
           >
             {date}
           </Typography>
-          {dateInvites.map((invite, idx) => (
+          {dateInvites.map((invite) => (
             <ListItem
               key={invite.id}
               alignItems="flex-start"
@@ -94,14 +148,16 @@ function CalendarInvites({ invites = [] }) {
               <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                   <Typography variant="subtitle1" component="div" sx={{ fontWeight: 500 }}>
-                    {invite.title}
+                    {invite.summary || 'Untitled Event'}
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1 }}>
                     <Button
                       variant="outlined"
                       color="primary"
                       size="small"
-                      startIcon={<CheckCircleIcon />}
+                      startIcon={respondingTo === invite.id ? <CircularProgress size={16} /> : <CheckCircleIcon />}
+                      onClick={() => handleResponse(invite.id, true)}
+                      disabled={respondingTo !== null}
                       sx={{ borderRadius: 2 }}
                     >
                       Accept
@@ -110,7 +166,9 @@ function CalendarInvites({ invites = [] }) {
                       variant="outlined"
                       color="error"
                       size="small"
-                      startIcon={<CancelIcon />}
+                      startIcon={respondingTo === invite.id ? <CircularProgress size={16} /> : <CancelIcon />}
+                      onClick={() => handleResponse(invite.id, false)}
+                      disabled={respondingTo !== null}
                       sx={{ borderRadius: 2 }}
                     >
                       Decline
@@ -122,7 +180,8 @@ function CalendarInvites({ invites = [] }) {
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <AccessTimeIcon fontSize="small" color="action" />
                     <Typography variant="body2" color="text.secondary">
-                      {formatTime(invite.startTime)} - {formatTime(invite.endTime)}
+                      {formatTime(invite.start?.dateTime || invite.start?.date)} - 
+                      {formatTime(invite.end?.dateTime || invite.end?.date)}
                     </Typography>
                   </Box>
                   {invite.location && (
@@ -136,7 +195,7 @@ function CalendarInvites({ invites = [] }) {
                 </Box>
 
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                  {invite.isOnline && (
+                  {invite.hangoutLink && (
                     <Chip
                       icon={<VideocamIcon />}
                       label="Online Meeting"
@@ -161,5 +220,24 @@ function CalendarInvites({ invites = [] }) {
     </List>
   );
 }
+
+CalendarInvites.propTypes = {
+  invites: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.string,
+    summary: PropTypes.string,
+    start: PropTypes.shape({
+      dateTime: PropTypes.string,
+      date: PropTypes.string,
+    }),
+    end: PropTypes.shape({
+      dateTime: PropTypes.string,
+      date: PropTypes.string,
+    }),
+    location: PropTypes.string,
+    hangoutLink: PropTypes.string,
+    attendees: PropTypes.array,
+  })),
+  onInviteResponded: PropTypes.func,
+};
 
 export default CalendarInvites;

@@ -120,14 +120,17 @@ function SummaryPage() {
 
   const getStatCount = (type) => {
     if (!summaryData) return 0;
+    const today = new Date();
     switch (type) {
       case 'events':
-        return summaryData.events?.length || 0;
+        // Use event.start date (dateTime or date)
+        return (summaryData.events?.upcoming || []).length;
       case 'emails':
-        return summaryData.emails?.important?.length || 0;
+        // Count all important emails directly
+        return (summaryData.emails).length;
       case 'tasks':
-        // Ensure actionItems is an array before checking length
-        return Array.isArray(summaryData.actionItems) ? summaryData.actionItems.length : 0;
+        // Count only non-completed tasks
+        return (summaryData.actionItems || []).filter(task => !task.completed).length;
       default:
         return 0;
     }

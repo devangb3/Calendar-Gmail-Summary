@@ -330,6 +330,40 @@ def accept_invite(event_id):
         log_error(summary_logger, e, "Failed to accept calendar invite")
         return format_error_response(str(e), 500)
 
+@summary_bp.route('/decline-invite/<event_id>', methods=['POST'])
+def decline_invite(event_id):
+    """Decline a calendar invitation"""
+    try:
+        summary_logger.info(f"Processing decline invite request for event {event_id}")
+        user_id = session.get('user_id')
+        if not user_id:
+            summary_logger.warning("Unauthorized decline invite request")
+            return format_error_response(UNAUTHORIZED_ERROR, 401)
+
+        # Get user and check credentials
+        user = User.find_by_id(user_id)
+        if not user:
+            summary_logger.error(f"User {user_id} not found")
+            return format_error_response(USER_NOT_FOUND_ERROR, 401)
+            
+        credentials = user.credentials
+        if not credentials:
+            summary_logger.error(f"No valid credentials found for user {user_id}")
+            return format_error_response(NO_CREDENTIALS_ERROR, 401)
+
+        # Decline invite using calendar service
+        calendar_service = CalendarService(credentials)
+        success = calendar_service.decline_invite(event_id)
+        
+        return jsonify({
+            "success": success,
+            "message": "Calendar invite declined successfully" if success else "Failed to decline invite"
+        })
+
+    except Exception as e:
+        log_error(summary_logger, e, "Failed to decline calendar invite")
+        return format_error_response(str(e), 500)
+
 def _is_summary_stale(summary):
     """Check if a cached summary is too old to use"""
     if not summary or not summary.generated_at:

@@ -170,3 +170,34 @@ class CalendarService:
         except Exception as e:
             log_error(api_logger, e, "Failed to fetch pending invites")
             raise
+
+    def decline_invite(self, event_id):
+        """Decline a calendar invitation"""
+        try:
+            api_logger.info(f"Declining calendar invite: {event_id}")
+            
+            # Get the event to verify it exists and get attendee info
+            event = self.service.events().get(calendarId='primary', eventId=event_id).execute()
+            
+            # Find the current user's attendee entry
+            user_email = self.service.calendarList().get(calendarId='primary').execute().get('id')
+            for attendee in event.get('attendees', []):
+                if attendee.get('email') == user_email:
+                    # Update response status to declined
+                    attendee['responseStatus'] = 'declined'
+                    break
+            
+            # Update the event with the new response status
+            self.service.events().patch(
+                calendarId='primary',
+                eventId=event_id,
+                body={'attendees': event.get('attendees', [])},
+                sendNotifications=True
+            ).execute()
+            
+            api_logger.info(f"Successfully declined calendar invite: {event_id}")
+            return True
+            
+        except Exception as e:
+            log_error(api_logger, e, f"Failed to decline calendar invite: {event_id}")
+            return False
