@@ -17,6 +17,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import CachedIcon from '@mui/icons-material/Cached';
 import { auth, summary, isApiError, getErrorMessage } from '../utils/api';
 import DatabaseStatus from './common/DatabaseStatus';
+import logger from '../utils/logger';
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
@@ -42,21 +43,26 @@ function SummaryPage() {
 
   const fetchSummary = async () => {
     try {
+      logger.info('Fetching summary data');
       setLoading(true);
       setError(null);
       const response = await summary.get();
       setSummaryData(response.data);
       setDbStatus('available');
+      logger.info('Summary data fetched successfully', { cached: response.data?.cached });
     } catch (err) {
-      console.error("Error fetching summary:", err);
+      logger.error('Error fetching summary:', err);
       if (err.response?.status === 401) {
+        logger.info('User not authenticated, redirecting to login');
         navigate('/login');
       } else if (err.response?.status === 503) {
+        logger.warn('Database service unavailable');
         setDbStatus('unavailable');
         setError('Database service is currently unavailable. Some features may be limited.');
       } else {
         setError(getErrorMessage(err));
         if (err.response?.data?.status === 'degraded') {
+          logger.warn('Database service degraded');
           setDbStatus('degraded');
         }
       }
@@ -66,19 +72,24 @@ function SummaryPage() {
   };
 
   useEffect(() => {
+    logger.info('SummaryPage mounted, fetching initial data');
     fetchSummary();
   }, [navigate]);
 
   const handleLogout = async () => {
     try {
+      logger.info('User initiated logout');
       await auth.logout();
+      logger.info('Logout successful, redirecting to login');
       navigate('/login');
     } catch (err) {
+      logger.error('Logout failed:', err);
       setError(getErrorMessage(err));
     }
   };
 
   const handleRefresh = () => {
+    logger.info('Manual refresh initiated');
     fetchSummary();
   };
 

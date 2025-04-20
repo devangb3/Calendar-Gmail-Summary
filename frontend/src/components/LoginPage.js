@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Box, Button, Container, Typography, Paper, Alert } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import { styled } from '@mui/material/styles';
 import { auth, getErrorMessage } from '../utils/api';
 import DatabaseStatus from './common/DatabaseStatus';
+import { useAuthContext } from '../context/AuthContext';
+import logger from '../utils/logger';
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: '2rem',
@@ -32,19 +35,32 @@ function LoginPage() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [dbStatus, setDbStatus] = useState('available');
+  const { isAuthenticated } = useAuthContext();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    // If already authenticated, redirect to home or the page they were trying to access
+    if (isAuthenticated) {
+      const from = location.state?.from?.pathname || '/';
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, navigate, location]);
 
   const handleLogin = async () => {
     try {
+      logger.info('User initiating login');
       setLoading(true);
       setError(null);
       const response = await auth.login();
       if (response.data?.authorization_url) {
+        logger.info('Login authorization URL received');
         window.location.href = response.data.authorization_url;
       } else {
         setError('Invalid response from server');
       }
     } catch (err) {
-      console.error('Login error:', err);
+      logger.error('Login failed:', err);
       if (err.response?.status === 503) {
         setDbStatus('unavailable');
         setError('Database service is unavailable. Please try again later.');

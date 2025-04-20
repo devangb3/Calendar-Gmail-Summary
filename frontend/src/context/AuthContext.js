@@ -1,25 +1,48 @@
-import React, { createContext, useContext } from 'react';
-import { useAuth } from '../hooks/useAuth';
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
+import { auth } from '../utils/api';
+import logger from '../utils/logger';
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const auth = useAuth();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const checkAuthStatus = useCallback(async () => {
+    try {
+      logger.info('Checking authentication status');
+      const response = await auth.check();
+      const authenticated = response.data?.authenticated === true;
+      setIsAuthenticated(authenticated);
+      logger.info('Auth status check complete', { authenticated });
+      return authenticated;
+    } catch (error) {
+      if (error.response?.status === 401) {
+        logger.info('Auth check returned 401, user not authenticated');
+      } else {
+        logger.error('Auth status check failed:', error);
+      }
+      setIsAuthenticated(false);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
+
+  const value = {
+    isAuthenticated,
+    setIsAuthenticated,
+    loading,
+    checkAuthStatus
+  };
 
   return (
-    <AuthContext.Provider value={auth}>
-      {auth.isLoading ? (
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          height: '100vh' 
-        }}>
-          Loading...
-        </div>
-      ) : (
-        children
-      )}
+    <AuthContext.Provider value={value}>
+      {children}
     </AuthContext.Provider>
   );
 }

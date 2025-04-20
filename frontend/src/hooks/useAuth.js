@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../utils/api';
+import logger from '../utils/logger';
 
 export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -8,16 +9,19 @@ export function useAuth() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check authentication status when component mounts
     checkAuthStatus();
   }, []);
 
   const checkAuthStatus = async () => {
     try {
-      // Try to get summary - this will fail with 401 if not authenticated
-      await auth.checkSession();
-      setIsAuthenticated(true);
+      const response = await auth.check();
+      const authenticated = response.data?.authenticated === true;
+      setIsAuthenticated(authenticated);
+      if (!authenticated && window.location.pathname !== '/login') {
+        navigate('/login');
+      }
     } catch (error) {
+      logger.error('Auth check failed:', error);
       setIsAuthenticated(false);
       if (window.location.pathname !== '/login') {
         navigate('/login');
@@ -34,7 +38,7 @@ export function useAuth() {
         window.location.href = response.data.authorization_url;
       }
     } catch (error) {
-      console.error('Login failed:', error);
+      logger.error('Login failed:', error);
       throw error;
     }
   };
@@ -45,7 +49,7 @@ export function useAuth() {
       setIsAuthenticated(false);
       navigate('/login');
     } catch (error) {
-      console.error('Logout failed:', error);
+      logger.error('Logout failed:', error);
       throw error;
     }
   };
@@ -55,6 +59,7 @@ export function useAuth() {
     isLoading,
     login,
     logout,
+    checkAuthStatus
   };
 }
 

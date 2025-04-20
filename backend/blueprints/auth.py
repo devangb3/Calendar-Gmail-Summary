@@ -4,94 +4,66 @@ from models.user import User
 from config.settings import FRONTEND_URL
 from config.database import Database
 from utils.helpers import format_error_response
+from utils.logger import auth_logger, log_error
 
-auth_bp = Blueprint('auth', __name__)
+auth_bp = Blueprint('auth', __name__, url_prefix='/auth')  # Add url_prefix
 auth_service = AuthService()
 
 @auth_bp.route('/login')
 def login():
     try:
+        auth_logger.info("Login attempt initiated")
         authorization_url = auth_service.get_authorization_url()
+        auth_logger.info("Generated authorization URL successfully")
         return jsonify({"authorization_url": authorization_url})
     except Exception as e:
         error_message = str(e)
         if 'scope' in error_message.lower():
-            # Handle scope-related errors by forcing re-authentication
+            auth_logger.warning("Scope-related error during login, clearing session")
             session.clear()
             return jsonify({
                 "error": "Authentication scope has changed. Please sign in again.",
                 "authorization_url": auth_service.get_authorization_url()
             })
-        return format_error_response(e, 500)
-
-@auth_bp.route('/oauth2callback')
-def oauth2callback():
-    try:
-        code = request.args.get('code')
-        if not code:
-            return format_error_response("No authorization code received", 400)
-
-        error = request.args.get('error')
-        if error:
-            if error == 'access_denied':
-                return format_error_response("Access denied by user", 403)
-            return format_error_response(f"Authorization error: {error}", 400)
-
-        # Ensure database is connected before proceeding
-        db = Database.get_instance()
-        if db is None or not db.ensure_connected():
-            return format_error_response("Database service unavailable", 503)
-
-        # Exchange authorization code for tokens
-        try:
-            print("[DEBUG] Exchanging authorization code for tokens")
-            token = auth_service.get_token(request.url, request.base_url)
-            if not token:
-                return format_error_response("Failed to obtain access token", 500)
-        except Exception as e:
-            error_message = str(e)
-            print(f"[ERROR] Token exchange failed: {error_message}")
-            if 'scope' in error_message.lower():
-                session.clear()
-                return redirect('/login')
-            return format_error_response(f"Token exchange failed: {error_message}", 500)
-
-        # Get user info with the new token
-        print("[DEBUG] Fetching user info with new token")
-        user_info = auth_service.get_user_info()
-        if not user_info:
-            return format_error_response("Failed to get user info from Google. Please try again.", 500)
-        
-        # Create and save user
-        try:
-            user = User(user_info['sub'], user_info['email'], user_info.get('name', ''))
-            user.save_credentials(token)
-            session['user_id'] = user_info['sub']
-            print(f"[DEBUG] User credentials saved successfully for ID: {user_info['sub']}")
-            
-            # Directly redirect to frontend URL
-            return redirect(FRONTEND_URL)
-        except Exception as e:
-            print(f"[ERROR] Failed to save user credentials: {str(e)}")
-            return format_error_response(f"Failed to save user credentials: {str(e)}", 500)
-    except Exception as e:
-        print(f"[ERROR] Unexpected error in oauth2callback: {str(e)}")
+        log_error(auth_logger, e, "Login failed")
         return format_error_response(e, 500)
 
 @auth_bp.route('/logout')
 def logout():
     try:
         user_id = session.get('user_id')
+        auth_logger.info(f"Logout initiated for user: {user_id}")
         if user_id:
             # Ensure database is connected before proceeding
             db = Database.get_instance()
             if db is None or not db.ensure_connected():
+                auth_logger.error("Database connection failed during logout")
                 return format_error_response("Database service unavailable", 503)
 
             user = User.find_by_id(user_id)
             if user:
                 user.remove_credentials()
+                auth_logger.info(f"Credentials removed for user: {user_id}")
         session.clear()
+        auth_logger.info(f"Logout successful for user: {user_id}")
         return jsonify({"message": "Successfully logged out"})
     except Exception as e:
+        log_error(auth_logger, e, f"Logout failed for user: {user_id}")
         return format_error_response(e, 500)
+
+@auth_bp.route('/check')
+def check_auth_status():
+    """Check if the user is currently authenticated."""
+    user_id = session.get('user_id')
+    is_authenticated = user_id is not None
+    
+    if is_authenticated:
+        # Optionally, verify the user still exists and credentials are valid
+        user = User.find_by_id(user_id)
+        if not user or not user.get_credentials():
+            is_authenticated = False
+            session.clear()  # Clear session if user/credentials invalid
+            auth_logger.warning(f"Invalid session found for user_id: {user_id}. Session cleared.")
+
+    auth_logger.debug(f"Auth check status for session: {is_authenticated}")
+    return jsonify({"authenticated": is_authenticated})

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './context/AuthContext';
@@ -56,14 +56,16 @@ const theme = createTheme({
 
 // Protected Route Component
 function ProtectedRoute({ children }) {
-  const { isAuthenticated, isLoading } = useAuthContext();
+  const { isAuthenticated, loading } = useAuthContext();
+  const location = useLocation();
 
-  if (isLoading) {
+  if (loading) {
     return <LoadingSpinner message="Checking authentication..." />;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    // Keep track of where they were trying to go
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   return children;
