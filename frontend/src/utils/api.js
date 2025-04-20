@@ -107,6 +107,14 @@ export const summary = {
     logger.info('Fetching summary');
     return api.get('/summary');
   },
+  getSmartReplies: (threadId) => {
+    logger.info('Fetching smart replies for thread:', threadId);
+    return api.get(`/smart-replies/${threadId}`);
+  },
+  sendReply: (data) => {
+    logger.info('Sending email reply');
+    return api.post('/send-reply', data);
+  }
 };
 
 // Helper function to check if error is an API error

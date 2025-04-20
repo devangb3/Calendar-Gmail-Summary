@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from config.database import Database, DatabaseError, DatabaseConnectionError, DB_ERROR_MESSAGES
 from config.settings import SCOPES
+from utils.logger import db_logger as logger
 
 class UserError(Exception):
     """Base exception for user-related errors."""
@@ -82,12 +83,16 @@ class User:
 
         credentials = user_data['credentials']
         
-        # Verify scope compatibility
+        # Always verify scope compatibility
         if 'scopes' in credentials:
             required_scopes = set(SCOPES)
             stored_scopes = set(credentials['scopes'])
-            if not required_scopes.issubset(stored_scopes):
-                # If scopes are incompatible, remove credentials to force re-auth
+            missing_scopes = required_scopes - stored_scopes
+            
+            if missing_scopes:
+                # Log which scopes are missing for debugging
+                logger.warning(f"User {self.user_id} missing scopes: {missing_scopes}")
+                # If any required scopes are missing, remove credentials to force re-auth
                 self.remove_credentials()
                 return None
                 

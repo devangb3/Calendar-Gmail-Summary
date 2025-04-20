@@ -23,7 +23,7 @@ class GmailService:
             log_error(api_logger, e, "Failed to initialize Gmail service")
             raise
 
-    def get_recent_emails(self, max_results=10):
+    def get_recent_emails(self, max_results=5):
         try:
             api_logger.info(f"Fetching recent emails, max_results={max_results}")
             time_threshold = (datetime.now(timezone.utc) - timedelta(days=7)).strftime('%Y/%m/%d')
@@ -87,3 +87,72 @@ class GmailService:
         except Exception as e:
             log_error(api_logger, e, f"Failed to parse email message ID: {message.get('id', 'unknown')}")
             return None
+
+    def send_email(self, to, subject, body, thread_id=None):
+        try:
+            message = {
+                'raw': base64.urlsafe_b64encode(
+                    self._create_message(to, subject, body, thread_id)
+                    .encode('utf-8')
+                ).decode('utf-8')
+            }
+            
+            if thread_id:
+                message['threadId'] = thread_id
+                
+            api_logger.info(f"Sending email reply to thread: {thread_id}")
+            try:
+                sent_message = self.service.users().messages().send(
+                    userId='me',
+                    body=message
+                ).execute()
+                api_logger.info("Email sent successfully")
+                return sent_message
+            except Exception as e:
+                error_msg = str(e)
+                if 'insufficient authentication scopes' in error_msg.lower():
+                    api_logger.error("Insufficient Gmail permissions - user needs to re-authenticate")
+                    raise Exception("Additional permissions required. Please log out and sign in again to grant email sending permission.")
+                raise
+        except Exception as e:
+            log_error(api_logger, e, "Failed to send email")
+            raise
+
+    def _create_message(self, to, subject, body, thread_id=None):
+        """Create email message in RFC 822 format"""
+        message = email.message.EmailMessage()
+        message.set_content(body)
+        message['to'] = to
+        message['subject'] = subject
+        
+        if thread_id:
+            message['References'] = f'<{thread_id}>'
+            message['In-Reply-To'] = f'<{thread_id}>'
+            
+        return message.as_string()
+
+    def get_thread(self, thread_id):
+        """Get full email thread details"""
+        try:
+            api_logger.info(f"Fetching thread: {thread_id}")
+            thread = self.service.users().threads().get(
+                userId='me',
+                id=thread_id,
+                format='full'
+            ).execute()
+            
+            # Parse the thread messages
+            messages = []
+            for msg in thread.get('messages', []):
+                parsed_msg = self._parse_message(msg)
+                if parsed_msg:
+                    messages.append(parsed_msg)
+                    
+            return {
+                'id': thread['id'],
+                'messages': messages,
+                'snippet': thread.get('snippet', '')
+            }
+        except Exception as e:
+            log_error(api_logger, e, f"Failed to fetch thread: {thread_id}")
+            raise

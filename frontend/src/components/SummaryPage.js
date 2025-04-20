@@ -18,6 +18,8 @@ import CachedIcon from '@mui/icons-material/Cached';
 import { auth, summary, isApiError, getErrorMessage } from '../utils/api';
 import DatabaseStatus from './common/DatabaseStatus';
 import logger from '../utils/logger';
+import EmailCard from './common/EmailCard';
+import SmartReplyModal from './common/SmartReplyModal';
 
 const ActionButton = styled(Button)(({ theme }) => ({
   margin: theme.spacing(1),
@@ -74,6 +76,8 @@ function SummaryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dbStatus, setDbStatus] = useState('available');
+  const [selectedEmail, setSelectedEmail] = useState(null);
+  const [showSmartReplyModal, setShowSmartReplyModal] = useState(false);
   const navigate = useNavigate();
 
   const fetchSummary = useCallback(async () => {
@@ -126,6 +130,11 @@ function SummaryPage() {
   const handleRefresh = () => {
     logger.info('Manual refresh initiated');
     fetchSummary();
+  };
+
+  const handleSmartReply = (email) => {
+    setSelectedEmail(email);
+    setShowSmartReplyModal(true);
   };
 
   const getErrorSeverity = (errorMessage) => {
@@ -194,16 +203,34 @@ function SummaryPage() {
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 6 }}>
           <CircularProgress size={48} />
         </Box>
-      ) : summaryData?.summary ? (
-        <EnhancedSummaryPaper elevation={3}>
-          <SummaryText component="div">
-            {summaryData.summary}
-          </SummaryText>
-        </EnhancedSummaryPaper>
-      ) : !error && (
-        <Alert severity="info" sx={{ maxWidth: 600, mx: 'auto' }}>
-          No summary available. Try refreshing to generate a new summary.
-        </Alert>
+      ) : (
+        <>
+          {summaryData?.summary && (
+            <EnhancedSummaryPaper elevation={3}>
+              <SummaryText component="div">
+                {summaryData.summary}
+              </SummaryText>
+            </EnhancedSummaryPaper>
+          )}
+
+          {summaryData?.emails && summaryData.emails.length > 0 && (
+            <Box sx={{ mt: 4 }}>
+              <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+                Latest Emails ({summaryData.emails.length})
+                <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                  Most recent first
+                </Typography>
+              </Typography>
+              {summaryData.emails.map((email) => (
+                <EmailCard
+                  key={email.id}
+                  email={email}
+                  onSmartReply={handleSmartReply}
+                />
+              ))}
+            </Box>
+          )}
+        </>
       )}
 
       {!loading && !error && summaryData?.summary && (
@@ -234,6 +261,15 @@ function SummaryPage() {
           </Typography>
         </LastUpdatedBox>
       )}
+
+      <SmartReplyModal
+        open={showSmartReplyModal}
+        email={selectedEmail}
+        onClose={() => {
+          setShowSmartReplyModal(false);
+          setSelectedEmail(null);
+        }}
+      />
     </Container>
   );
 }

@@ -24,7 +24,8 @@ SCOPES = [
     'https://www.googleapis.com/auth/userinfo.profile',  # Required for user profile
     'https://www.googleapis.com/auth/userinfo.email',  # Required for email
     'https://www.googleapis.com/auth/calendar.readonly',  # For calendar access
-    'https://www.googleapis.com/auth/gmail.readonly',  # For gmail access
+    'https://www.googleapis.com/auth/gmail.readonly',  # For reading gmail
+    'https://www.googleapis.com/auth/gmail.send',  # For sending emails
 ]
 
 # Gemini API Configuration
