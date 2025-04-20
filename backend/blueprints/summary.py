@@ -51,33 +51,51 @@ def get_summary():
             cached_summary = Summary.get_recent_summary(user_id)
             if cached_summary and not _is_summary_stale(cached_summary):
                 summary_logger.info(f"Returning cached summary for user {user_id}")
-                calendar_service = CalendarService(credentials)
-                gmail_service = GmailService(credentials)
-                try:
-                    events = calendar_service.get_events()
-                    emails = gmail_service.get_recent_emails()
-                    return jsonify({
-                        "summary": cached_summary.summary_text,
-                        "emails": emails,
-                        "events": events,
-                        "cached": True,
-                        "generated_at": cached_summary.generated_at.isoformat()
-                    })
-                except Exception as e:
-                    log_error(summary_logger, e, "Failed to fetch data for cached summary")
-                    return jsonify({
-                        "summary": cached_summary.summary_text,
-                        "cached": True,
-                        "generated_at": cached_summary.generated_at.isoformat()
-                    })
+                return jsonify({
+                    "summary": cached_summary.summary_text,
+                    "cached": True,
+                    "generated_at": cached_summary.generated_at.isoformat()
+                })
 
         # Force refresh or no valid cache - use scheduler to refresh digest
         try:
             summary_logger.info(f"Refreshing digest for user {user_id}")
-            result = scheduler_service.refresh_user_digest(user_id)
-            if not result:
-                return format_error_response("Failed to refresh digest", 500)
-            return jsonify(result)
+            calendar_service = CalendarService(credentials)
+            gmail_service = GmailService(credentials)
+
+            events = calendar_service.get_events(
+                time_min=datetime.now(timezone.utc).isoformat(),
+                time_max=(datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            )
+            raw_emails = gmail_service.get_recent_emails()
+            
+            # Format emails to ensure threadId and other required fields are included
+            formatted_emails = []
+            for email in raw_emails:
+                if email and email.get('threadId'):  # Only include emails with valid threadId
+                    formatted_emails.append({
+                        'subject': email.get('subject', 'No Subject'),
+                        'from': email.get('from', 'Unknown Sender'),
+                        'from_email': email.get('from_email'),  # Include from_email field
+                        'threadId': email['threadId'],
+                        'snippet': email.get('snippet', ''),
+                        'date': email.get('date', ''),
+                        'id': email.get('id', '')
+                    })
+            
+            # Generate structured summary through Gemini
+            gemini_service = GeminiService()
+            summary_text = gemini_service.generate_summary(events, formatted_emails)
+            
+            # Save the summary
+            summary = Summary(user_id, summary_text)
+            summary.save()
+            
+            return jsonify({
+                "summary": summary_text,
+                "cached": False,
+                "generated_at": datetime.now(timezone.utc).isoformat()
+            })
         except Exception as e:
             log_error(summary_logger, e, "Failed to refresh digest")
             return format_error_response(str(e), 500)
@@ -90,6 +108,12 @@ def get_summary():
 def get_smart_replies(thread_id):
     try:
         summary_logger.info(f"Smart replies request initiated for thread: {thread_id}")
+        
+        # Validate thread_id
+        if not thread_id or thread_id == 'null' or thread_id == 'undefined':
+            summary_logger.error("Invalid thread_id received")
+            return format_error_response("Invalid thread ID", 400)
+            
         user_id = session.get('user_id')
         if not user_id:
             summary_logger.warning("Unauthorized smart replies request")

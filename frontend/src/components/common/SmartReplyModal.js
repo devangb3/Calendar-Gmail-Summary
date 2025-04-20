@@ -67,7 +67,13 @@ const SmartReplyModal = ({ open, email, onClose }) => {
     try {
       setLoading(true);
       setError(null);
-      logger.info('Generating smart replies for email:', { threadId: email?.threadId });
+
+      // Validate threadId exists and is valid
+      if (!email?.threadId || typeof email.threadId !== 'string') {
+        throw new Error('Invalid thread ID');
+      }
+
+      logger.info('Generating smart replies for email:', { threadId: email.threadId });
       const response = await summary.getSmartReplies(email.threadId);
       setReplies(response.data.replies);
       setThread(response.data.thread);
@@ -95,7 +101,7 @@ const SmartReplyModal = ({ open, email, onClose }) => {
       await summary.sendReply({
         threadId: email.threadId,
         reply: editedReply,
-        to: email.from,
+        to: email.from_email,  // Use from_email instead of from
         subject: `Re: ${email.subject}`
       });
       
@@ -243,6 +249,7 @@ SmartReplyModal.propTypes = {
     threadId: PropTypes.string.isRequired,
     subject: PropTypes.string.isRequired,
     from: PropTypes.string.isRequired,
+    from_email: PropTypes.string.isRequired, // Added from_email field
     date: PropTypes.string.isRequired,
     snippet: PropTypes.string
   }),

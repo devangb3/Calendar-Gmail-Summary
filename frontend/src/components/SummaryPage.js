@@ -3,73 +3,85 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Box, 
   Container, 
-  Paper, 
   Typography, 
   Button, 
   CircularProgress,
   Alert,
   Link,
-  Chip
+  Chip,
+  Grid,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
+  IconButton
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import LogoutIcon from '@mui/icons-material/Logout';
 import CachedIcon from '@mui/icons-material/Cached';
+import EventIcon from '@mui/icons-material/Event';
+import EmailIcon from '@mui/icons-material/Email';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { auth, summary, isApiError, getErrorMessage } from '../utils/api';
 import DatabaseStatus from './common/DatabaseStatus';
-import logger from '../utils/logger';
-import EmailCard from './common/EmailCard';
+import DashboardCard from './common/DashboardCard';
+import PriorityBadge from './common/PriorityBadge';
 import SmartReplyModal from './common/SmartReplyModal';
+import logger from '../utils/logger';
+
+const EnhancedHeader = styled(Box)(({ theme }) => ({
+  background: 'linear-gradient(135deg, #3f51b5 0%, #f50057 100%)',
+  color: '#fff',
+  borderRadius: '20px',
+  padding: theme.spacing(4),
+  marginBottom: theme.spacing(4),
+  boxShadow: '0 8px 32px 0 rgba(63,81,181,0.1)',
+}));
+
+const QuickSummary = styled(Typography)(({ theme, priority }) => {
+  const colors = {
+    HIGH: theme.palette.error.light,
+    MEDIUM: theme.palette.warning.light,
+    LOW: theme.palette.success.light
+  };
+  return {
+    fontSize: '1.2rem',
+    fontWeight: 500,
+    lineHeight: 1.6,
+    textAlign: 'left',
+    padding: theme.spacing(3),
+    background: `linear-gradient(to right, ${colors[priority] || colors.LOW}15, transparent)`,
+    borderRadius: '12px',
+    borderLeft: `4px solid ${colors[priority] || colors.LOW}`,
+    margin: theme.spacing(2, 0),
+    whiteSpace: 'pre-line'
+  };
+});
 
 const ActionButton = styled(Button)(({ theme }) => ({
   margin: theme.spacing(1),
+  borderRadius: '12px',
+  padding: theme.spacing(1, 3),
 }));
 
-const EnhancedHeader = styled(Box)(({ theme }) => ({
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  background: 'linear-gradient(90deg, #3f51b5 0%, #f50057 100%)',
-  color: '#fff',
-  borderRadius: '16px',
-  padding: theme.spacing(4, 2, 3, 2),
-  marginBottom: theme.spacing(3),
-  boxShadow: '0 8px 24px 0 rgba(63,81,181,0.08)',
-}));
-
-const EnhancedSummaryPaper = styled(Paper)(({ theme }) => ({
-  padding: theme.spacing(4),
-  margin: theme.spacing(2, 0),
-  borderRadius: '16px',
-  background: '#fff',
-  boxShadow: '0 6px 24px 0 rgba(63,81,181,0.08)',
-  border: '1.5px solid #e3e8f0',
-  maxWidth: 700,
-  marginLeft: 'auto',
-  marginRight: 'auto',
-}));
-
-const SummaryText = styled(Typography)(({ theme }) => ({
-  fontSize: '1.18rem',
-  lineHeight: 1.85,
-  color: theme.palette.text.primary,
-  whiteSpace: 'pre-line',
-  wordBreak: 'break-word',
-  letterSpacing: 0.01,
-  fontWeight: 400,
-  padding: theme.spacing(0.5, 0),
-  borderLeft: `4px solid ${theme.palette.primary.light}`,
-  background: 'rgba(63,81,181,0.03)',
-  borderRadius: '6px',
-  paddingLeft: theme.spacing(2),
-}));
-
-const LastUpdatedBox = styled(Box)(({ theme }) => ({
-  marginTop: theme.spacing(3),
-  textAlign: 'center',
-  padding: theme.spacing(2, 0, 0, 0),
-  borderTop: `1px dashed ${theme.palette.grey[300]}`,
-}));
+const EventTypeChip = styled(Chip)(({ type, theme }) => {
+  const colors = {
+    MEETING: { bg: '#e3f2fd', color: '#1976d2' },
+    DEADLINE: { bg: '#fce4ec', color: '#c2185b' },
+    PERSONAL: { bg: '#e8f5e9', color: '#2e7d32' },
+    OTHER: { bg: '#f5f5f5', color: '#616161' }
+  };
+  const style = colors[type] || colors.OTHER;
+  return {
+    backgroundColor: style.bg,
+    color: style.color,
+    fontWeight: 500,
+    border: `1px solid ${style.color}20`
+  };
+});
 
 function SummaryPage() {
   const [summaryData, setSummaryData] = useState(null);
@@ -82,28 +94,20 @@ function SummaryPage() {
 
   const fetchSummary = useCallback(async (forceRefresh = false) => {
     try {
-      logger.info('Fetching summary data', { forceRefresh });
       setLoading(true);
       setError(null);
       const response = await summary.get(forceRefresh);
-      setSummaryData(response.data);
+      setSummaryData(JSON.parse(response.data.summary));
       setDbStatus('available');
-      logger.info('Summary data fetched successfully', { cached: response.data?.cached });
     } catch (err) {
       logger.error('Error fetching summary:', err);
       if (err.response?.status === 401) {
-        logger.info('User not authenticated, redirecting to login');
         navigate('/login');
       } else if (err.response?.status === 503) {
-        logger.warn('Database service unavailable');
         setDbStatus('unavailable');
         setError('Database service is currently unavailable. Some features may be limited.');
       } else {
         setError(getErrorMessage(err));
-        if (err.response?.data?.status === 'degraded') {
-          logger.warn('Database service degraded');
-          setDbStatus('degraded');
-        }
       }
     } finally {
       setLoading(false);
@@ -111,156 +115,299 @@ function SummaryPage() {
   }, [navigate]);
 
   useEffect(() => {
-    logger.info('SummaryPage mounted, fetching initial data');
     fetchSummary();
   }, [fetchSummary]);
 
   const handleLogout = async () => {
     try {
-      logger.info('User initiated logout');
       await auth.logout();
-      logger.info('Logout successful, redirecting to login');
       navigate('/login');
     } catch (err) {
-      logger.error('Logout failed:', err);
       setError(getErrorMessage(err));
     }
   };
 
-  const handleRefresh = () => {
-    logger.info('Manual refresh initiated');
-    fetchSummary(true);
-  };
-
-  const handleSmartReply = (email) => {
-    setSelectedEmail(email);
-    setShowSmartReplyModal(true);
-  };
-
-  const getErrorSeverity = (errorMessage) => {
-    if (dbStatus !== 'available') return 'warning';
-    if (isApiError(error) && error.status >= 500) return 'error';
-    return 'error';
-  };
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <CircularProgress size={48} />
+      </Box>
+    );
+  }
 
   return (
-    <Container maxWidth="md" sx={{ minHeight: '100vh', py: 4 }}>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
       <EnhancedHeader>
-        <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 700, letterSpacing: 0.5 }}>
-          Your Daily Summary
-        </Typography>
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 1 }}>
-          <DatabaseStatus status={dbStatus} />
-          {summaryData?.cached && (
-            <Chip
-              icon={<CachedIcon />}
-              label="Cached Summary"
-              color="info"
-              variant="outlined"
-              size="small"
-            />
-          )}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
+            Daily Summary
+          </Typography>
+          <Box>
+            <DatabaseStatus status={dbStatus} />
+            {summaryData?.cached && (
+              <Chip
+                icon={<CachedIcon />}
+                label="Cached"
+                color="info"
+                variant="outlined"
+                size="small"
+                sx={{ ml: 1 }}
+              />
+            )}
+          </Box>
+        </Box>
+        
+        <QuickSummary priority={summaryData?.quickSummary?.priority_level}>
+          {summaryData?.quickSummary?.overview}
+        </QuickSummary>
+
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+          <ActionButton
+            variant="contained"
+            color="inherit"
+            startIcon={<RefreshIcon />}
+            onClick={() => fetchSummary(true)}
+          >
+            Refresh
+          </ActionButton>
+          <ActionButton
+            variant="outlined"
+            color="inherit"
+            startIcon={<LogoutIcon />}
+            onClick={handleLogout}
+          >
+            Logout
+          </ActionButton>
         </Box>
       </EnhancedHeader>
 
       {error && (
         <Alert 
-          severity={getErrorSeverity(error)} 
-          sx={{ mb: 2, maxWidth: 600, mx: 'auto' }}
-          action={
-            dbStatus !== 'available' && (
-              <Button color="inherit" size="small" onClick={handleRefresh}>
-                Try Again
-              </Button>
-            )
-          }
+          severity={dbStatus !== 'available' ? 'warning' : 'error'} 
+          sx={{ mb: 4, maxWidth: 800, mx: 'auto' }}
         >
           {error}
         </Alert>
       )}
 
-      <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 3 }}>
-        <ActionButton
-          variant="contained"
-          color="primary"
-          startIcon={<RefreshIcon />}
-          onClick={handleRefresh}
-          disabled={loading}
-        >
-          Refresh Summary
-        </ActionButton>
-        <ActionButton
-          variant="outlined"
-          color="secondary"
-          startIcon={<LogoutIcon />}
-          onClick={handleLogout}
-        >
-          Logout
-        </ActionButton>
-      </Box>
-
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 6 }}>
-          <CircularProgress size={48} />
-        </Box>
-      ) : (
-        <>
-          {summaryData?.summary && (
-            <EnhancedSummaryPaper elevation={3}>
-              <SummaryText component="div">
-                {summaryData.summary}
-              </SummaryText>
-            </EnhancedSummaryPaper>
-          )}
-
-          {summaryData?.emails && summaryData.emails.length > 0 && (
-            <Box sx={{ mt: 4 }}>
-              <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
-                Latest Emails ({summaryData.emails.length})
-                <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                  Most recent first
-                </Typography>
-              </Typography>
-              {summaryData.emails.map((email) => (
-                <EmailCard
-                  key={email.id}
-                  email={email}
-                  onSmartReply={handleSmartReply}
-                />
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={6}>
+          <DashboardCard 
+            title="Upcoming Events" 
+            icon={<EventIcon />}
+          >
+            <List>
+              {summaryData?.events.upcoming.map((event, index) => (
+                <React.Fragment key={index}>
+                  <ListItem 
+                    sx={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'flex-start',
+                      py: 2 
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                      <EventTypeChip label={event.type} type={event.type} size="small" />
+                      <PriorityBadge priority={event.priority} />
+                    </Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                      {event.title}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, color: 'text.secondary' }}>
+                      <AccessTimeIcon sx={{ fontSize: 18, mr: 1 }} />
+                      <Typography variant="body2">
+                        {event.time}
+                      </Typography>
+                    </Box>
+                  </ListItem>
+                  {index < summaryData.events.upcoming.length - 1 && <Divider />}
+                </React.Fragment>
               ))}
-            </Box>
-          )}
-        </>
-      )}
+              {summaryData?.events.upcoming.length === 0 && (
+                <ListItem>
+                  <ListItemText primary="No upcoming events" />
+                </ListItem>
+              )}
+            </List>
+          </DashboardCard>
+        </Grid>
 
-      {!loading && !error && summaryData?.summary && (
-        <LastUpdatedBox>
-          <Typography variant="body2" color="text.secondary">
-            Last updated: {new Date().toLocaleTimeString()}
-            {summaryData.cached && ' (from cache)'}
-          </Typography>
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            View more details in:&nbsp;
-            <Link 
-              href="https://calendar.google.com" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              sx={{ mx: 1, fontWeight: 500 }}
-            >
-              Google Calendar
-            </Link>
-            |
-            <Link 
-              href="https://mail.google.com" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              sx={{ mx: 1, fontWeight: 500 }}
-            >
-              Gmail
-            </Link>
-          </Typography>
-        </LastUpdatedBox>
-      )}
+        <Grid item xs={12} md={6}>
+          <DashboardCard 
+            title="Important Emails" 
+            icon={<EmailIcon />}
+          >
+            <List>
+              {summaryData?.emails.important.map((email, index) => (
+                <React.Fragment key={index}>
+                  <ListItem 
+                    sx={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'flex-start',
+                      py: 2 
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', width: '100%' }}>
+                      <PriorityBadge priority={email.priority} />
+                      {email.actionRequired && (
+                        <Chip 
+                          label="Action Required" 
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                      {email.subject}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      From: {email.from}
+                    </Typography>
+                  </ListItem>
+                  {index < summaryData.emails.important.length - 1 && <Divider />}
+                </React.Fragment>
+              ))}
+              {summaryData?.emails.important.length === 0 && (
+                <ListItem>
+                  <ListItemText primary="No important emails" />
+                </ListItem>
+              )}
+            </List>
+          </DashboardCard>
+        </Grid>
+
+        <Grid item xs={12}>
+          <DashboardCard 
+            title="Action Items" 
+            icon={<AssignmentIcon />}
+          >
+            <List>
+              {summaryData?.actionItems.map((item, index) => (
+                <React.Fragment key={index}>
+                  <ListItem 
+                    sx={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'flex-start',
+                      py: 2 
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                      <PriorityBadge priority={item.priority} />
+                      <Chip 
+                        label={item.source} 
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    </Box>
+                    <Typography variant="subtitle1">
+                      {item.task}
+                    </Typography>
+                    {item.deadline && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, color: 'text.secondary' }}>
+                        <AccessTimeIcon sx={{ fontSize: 18, mr: 1 }} />
+                        <Typography variant="body2">
+                          Deadline: {item.deadline}
+                        </Typography>
+                      </Box>
+                    )}
+                  </ListItem>
+                  {index < summaryData.actionItems.length - 1 && <Divider />}
+                </React.Fragment>
+              ))}
+              {summaryData?.actionItems.length === 0 && (
+                <ListItem>
+                  <ListItemText primary="No action items" />
+                </ListItem>
+              )}
+            </List>
+          </DashboardCard>
+        </Grid>
+
+        <Grid item xs={12}>
+          <DashboardCard 
+            title="Recent Emails" 
+            icon={<EmailIcon />}
+          >
+            <List>
+              {summaryData?.emails?.important?.slice(0, 5).map((email, index) => (
+                <React.Fragment key={index}>
+                  <ListItem 
+                    sx={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'flex-start',
+                      py: 2 
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        <PriorityBadge priority={email.priority} />
+                        {email.actionRequired && (
+                          <Chip 
+                            label="Action Required" 
+                            size="small"
+                            color="error"
+                            variant="outlined"
+                          />
+                        )}
+                      </Box>
+                      {email.threadId && email.from_email && (
+                        <IconButton
+                          onClick={() => {
+                            setSelectedEmail({
+                              ...email,
+                              from_email: email.from_email
+                            });
+                            setShowSmartReplyModal(true);
+                          }}
+                          color="primary"
+                          size="small"
+                          title="Generate Smart Reply"
+                        >
+                          <SmartToyIcon />
+                        </IconButton>
+                      )}
+                    </Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                      {email.subject}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      From: {email.from}
+                    </Typography>
+                    {email.snippet && (
+                      <Typography 
+                        variant="body2" 
+                        color="text.secondary" 
+                        sx={{ 
+                          mt: 1,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}
+                      >
+                        {email.snippet}
+                      </Typography>
+                    )}
+                  </ListItem>
+                  {index < Math.min(summaryData.emails.important.length - 1, 4) && <Divider />}
+                </React.Fragment>
+              ))}
+              {(!summaryData?.emails?.important || summaryData.emails.important.length === 0) && (
+                <ListItem>
+                  <ListItemText primary="No recent emails" />
+                </ListItem>
+              )}
+            </List>
+          </DashboardCard>
+        </Grid>
+      </Grid>
 
       <SmartReplyModal
         open={showSmartReplyModal}

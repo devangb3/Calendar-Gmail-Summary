@@ -58,12 +58,29 @@ class GmailService:
             log_error(api_logger, e, "Failed to fetch recent emails")
             raise
 
+    def _extract_email(self, address_string):
+        """Extract email address from a string that might include a display name."""
+        try:
+            # Handle format like: "Display Name <email@example.com>"
+            if '<' in address_string and '>' in address_string:
+                return address_string[address_string.find('<')+1:address_string.find('>')]
+            # Handle format with just email address
+            return address_string.strip()
+        except Exception as e:
+            log_error(api_logger, e, f"Failed to extract email from: {address_string}")
+            return None
+
     def _parse_message(self, message):
         try:
             headers = message['payload']['headers']
             subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
             from_header = next((h['value'] for h in headers if h['name'].lower() == 'from'), 'Unknown Sender')
             date_header = next((h['value'] for h in headers if h['name'].lower() == 'date'), '')
+
+            # Extract clean email address from from_header
+            from_email = self._extract_email(from_header)
+            if not from_email:
+                from_email = from_header
 
             # Extract body
             body = ''
@@ -75,11 +92,18 @@ class GmailService:
             elif 'body' in message['payload']:
                 body = base64.urlsafe_b64decode(message['payload']['body'].get('data', '')).decode('utf-8')
 
+            # Ensure threadId is included and not null
+            thread_id = message.get('threadId')
+            if not thread_id:
+                api_logger.warning(f"No threadId found for message {message.get('id', 'unknown')}")
+                thread_id = message.get('id')  # Use message ID as fallback
+
             return {
                 'id': message['id'],
-                'threadId': message['threadId'],
+                'threadId': thread_id,
                 'subject': subject,
-                'from': from_header,
+                'from': from_header,  # Keep original for display
+                'from_email': from_email,  # Add clean email for reply
                 'date': date_header,
                 'snippet': message.get('snippet', ''),
                 'body': body

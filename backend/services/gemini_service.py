@@ -104,18 +104,30 @@ class GeminiService:
             raise GeminiServiceError(SMART_REPLY_ERROR.format(str(e)))
 
     def _clean_response(self, text):
-        """Clean and validate the response text"""
+        """Clean and validate the response text and ensure it's proper JSON"""
         if not text:
             return None
             
         # Remove any markdown formatting if present
-        text = text.replace('```', '').strip()
+        text = text.replace('```json', '').replace('```', '').strip()
         
-        # Ensure reasonable length
-        if len(text) < 10:  # Too short to be meaningful
-            return None
+        try:
+            import json
+            # Try to parse as JSON
+            data = json.loads(text)
             
-        return text
+            # Validate required structure
+            required_keys = ['quickSummary', 'events', 'emails', 'actionItems']
+            if not all(key in data for key in required_keys):
+                raise ValueError("Missing required keys in response structure")
+                
+            return json.dumps(data)  # Return properly formatted JSON string
+        except json.JSONDecodeError:
+            summary_logger.error("Failed to parse response as JSON")
+            return None
+        except Exception as e:
+            summary_logger.error(f"Error validating response structure: {str(e)}")
+            return None
 
     def _create_prompt(self, calendar_events, emails):
         try:
@@ -125,8 +137,49 @@ class GeminiService:
             events_text = self._format_events(calendar_events)
             emails_text = self._format_emails(emails)
 
-            prompt = f"""Please provide a concise summary of today's calendar events and important emails. 
-Focus on key meetings, deadlines, and critical communications.
+            prompt = f"""Based on the calendar events and emails provided, generate a structured summary in the following strict JSON format:
+
+{{
+  "quickSummary": {{
+    "overview": "A 3-4 line comprehensive overview of the day, highlighting key events, important meetings, deadlines, and critical emails. Include specific times and key action items that need immediate attention.",
+    "priority_level": "HIGH|MEDIUM|LOW"
+  }},
+  "events": {{
+    "total": "<number>",
+    "upcoming": [
+      {{
+        "title": "<event title>",
+        "time": "<formatted time>",
+        "priority": "HIGH|MEDIUM|LOW",
+        "type": "MEETING|DEADLINE|PERSONAL|OTHER"
+      }}
+    ]
+  }},
+  "emails": {{
+    "total": "<number>",
+    "important": [
+      {{
+        "subject": "<email subject>",
+        "from": "<sender>",
+        "from_email": "<sender_email>",
+        "threadId": "<threadId>",
+        "priority": "HIGH|MEDIUM|LOW",
+        "actionRequired": true|false,
+        "snippet": "<email snippet>"
+      }}
+    ]
+  }},
+  "actionItems": [
+    {{
+      "task": "<action item>",
+      "priority": "HIGH|MEDIUM|LOW",
+      "source": "EMAIL|CALENDAR|BOTH",
+      "deadline": "<deadline if any>"
+    }}
+  ]
+}}
+
+Here are the current items to summarize:
 
 Calendar Events:
 {events_text}
@@ -134,15 +187,21 @@ Calendar Events:
 Important Emails:
 {emails_text}
 
-Please format the summary in a clear, professional manner, highlighting:
-1. Key meetings and their times
-2. Important deadlines or action items
-3. Critical emails requiring attention
-4. Any follow-up tasks
+Rules:
+1. The quickSummary overview should be 3-4 lines long and include specific times and key details
+2. Priority should reflect urgency and importance
+3. Action items should be specific and actionable
+4. If no events or emails exist, return empty arrays but maintain the structure
+5. Type for events should be inferred from the content
+6. Keep email subjects, sender names, and email addresses exactly as provided in the original data
 
-Keep the tone professional and the content focused on actionable items.
-
-If there are no events or emails, mention that explicitly."""
+Remember to:
+- Keep the JSON structure exactly as shown
+- Make the summary detailed but concise
+- Include all fields even if empty
+- Validate JSON format
+- Use priority consistently"""
+            
             summary_logger.debug("Successfully created prompt")
             return prompt
 
@@ -215,6 +274,8 @@ If there are no events or emails, mention that explicitly."""
             email_lines = [
                 f"- Subject: {email.get('subject', 'No Subject')}",
                 f"  From: {email.get('from', 'Unknown Sender')}",
+                f"  From Email: {email.get('from_email', '')}",  # Add from_email explicitly
+                f"  ThreadId: {email.get('threadId', '')}",
                 f"  Preview: {email.get('snippet', 'No preview available')}"
             ]
             formatted_emails.append('\n'.join(email_lines))
