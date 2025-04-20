@@ -27,3 +27,5 @@ yarn-error.log*
 
 client_secret.json
 *.pem
+__pycache__/
+*.pyc

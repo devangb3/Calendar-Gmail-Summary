@@ -1,7 +1,9 @@
-import React from 'react';
-import { Box, Button, Container, Typography, Paper } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Button, Container, Typography, Paper, Alert } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import { styled } from '@mui/material/styles';
+import { auth, getErrorMessage } from '../utils/api';
+import DatabaseStatus from './common/DatabaseStatus';
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: '2rem',
@@ -27,9 +29,32 @@ const LoginButton = styled(Button)(({ theme }) => ({
 }));
 
 function LoginPage() {
-  function handleLogin() {
-    window.location.href = 'https://localhost:5000/auth/google';
-  }
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [dbStatus, setDbStatus] = useState('available');
+
+  const handleLogin = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await auth.login();
+      if (response.data?.authorization_url) {
+        window.location.href = response.data.authorization_url;
+      } else {
+        setError('Invalid response from server');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      if (err.response?.status === 503) {
+        setDbStatus('unavailable');
+        setError('Database service is unavailable. Please try again later.');
+      } else {
+        setError(getErrorMessage(err));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Container maxWidth="sm">
@@ -47,16 +72,32 @@ function LoginPage() {
           <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 600, color: '#2c3e50' }}>
             Welcome to Calendar Summary
           </Typography>
+          
+          <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%', mb: 2 }}>
+            <DatabaseStatus status={dbStatus} />
+          </Box>
+          
           <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3 }}>
             Get a smart summary of your calendar events and emails in one place
           </Typography>
+          
+          {error && (
+            <Alert 
+              severity={dbStatus !== 'available' ? 'warning' : 'error'} 
+              sx={{ width: '100%', mb: 2 }}
+            >
+              {error}
+            </Alert>
+          )}
+          
           <LoginButton
             variant="contained"
             color="primary"
             onClick={handleLogin}
+            disabled={loading || dbStatus === 'unavailable'}
             startIcon={<GoogleIcon />}
           >
-            Sign in with Google
+            {loading ? 'Connecting...' : 'Sign in with Google'}
           </LoginButton>
         </StyledPaper>
       </Box>
