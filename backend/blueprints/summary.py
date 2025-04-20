@@ -1,13 +1,15 @@
-from flask import Blueprint, jsonify, session, request
+from flask import Blueprint, jsonify, session, request, send_file
 from models.user import User
 from models.summary import Summary
 from services.calendar_service import CalendarService
 from services.gmail_service import GmailService
 from services.gemini_service import GeminiService, GeminiServiceError
 from services.scheduler_service import SchedulerService
+from services.tts_service import TTSService
 from utils.helpers import format_error_response
 from utils.logger import summary_logger, log_error
 from datetime import datetime, timedelta, timezone
+import os
 
 # Error messages
 INIT_SERVICES_ERROR = "Failed to initialize services"
@@ -203,6 +205,45 @@ def send_reply():
 
     except Exception as e:
         log_error(summary_logger, e, "Unexpected error in send reply endpoint")
+        return format_error_response(str(e), 500)
+
+@summary_bp.route('/audio-summary')
+def get_audio_summary():
+    """Generate and return an audio version of the current summary"""
+    try:
+        summary_logger.info("Audio summary request initiated")
+        user_id = session.get('user_id')
+        if not user_id:
+            summary_logger.warning("Unauthorized audio summary request")
+            return format_error_response(UNAUTHORIZED_ERROR, 401)
+
+        # Get recent summary from database
+        cached_summary = Summary.get_recent_summary(user_id)
+        if not cached_summary:
+            return format_error_response("No recent summary available", 404)
+            
+        # Generate audio from summary
+        tts_service = TTSService()
+        audio_file = tts_service.generate_audio_summary(cached_summary.summary_text)
+        
+        try:
+            response = send_file(
+                audio_file,
+                mimetype='audio/mpeg',
+                as_attachment=True,
+                download_name='summary.mp3'
+            )
+            # Add CORS headers specifically for audio streaming
+            response.headers['Accept-Ranges'] = 'bytes'
+            response.headers['Cache-Control'] = 'no-cache'
+            return response
+        finally:
+            # Clean up the temporary file after sending
+            if os.path.exists(audio_file):
+                os.unlink(audio_file)
+                
+    except Exception as e:
+        log_error(summary_logger, e, "Failed to generate audio summary")
         return format_error_response(str(e), 500)
 
 def _is_summary_stale(summary):

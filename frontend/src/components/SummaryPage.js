@@ -29,6 +29,7 @@ import DatabaseStatus from './common/DatabaseStatus';
 import DashboardCard from './common/DashboardCard';
 import PriorityBadge from './common/PriorityBadge';
 import SmartReplyModal from './common/SmartReplyModal';
+import AudioSummary from './common/AudioSummary';
 import logger from '../utils/logger';
 
 const EnhancedHeader = styled(Box)(({ theme }) => ({
@@ -160,6 +161,10 @@ function SummaryPage() {
           {summaryData?.quickSummary?.overview}
         </QuickSummary>
 
+        <Box sx={{ mt: 2, mb: 2 }}>
+          <AudioSummary />
+        </Box>
+
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
           <ActionButton
             variant="contained"
@@ -196,8 +201,8 @@ function SummaryPage() {
             icon={<EventIcon />}
           >
             <List>
-              {summaryData?.events.upcoming.map((event, index) => (
-                <React.Fragment key={index}>
+              {summaryData?.events.upcoming.map((event) => (
+                <React.Fragment key={`event-${event.title}-${event.time}`}>
                   <ListItem 
                     sx={{ 
                       display: 'flex', 
@@ -220,7 +225,7 @@ function SummaryPage() {
                       </Typography>
                     </Box>
                   </ListItem>
-                  {index < summaryData.events.upcoming.length - 1 && <Divider />}
+                  <Divider />
                 </React.Fragment>
               ))}
               {summaryData?.events.upcoming.length === 0 && (
@@ -238,8 +243,8 @@ function SummaryPage() {
             icon={<EmailIcon />}
           >
             <List>
-              {summaryData?.emails.important.map((email, index) => (
-                <React.Fragment key={index}>
+              {summaryData?.emails.important.map((email) => (
+                <React.Fragment key={`email-${email.threadId}-${email.subject}`}>
                   <ListItem 
                     sx={{ 
                       display: 'flex', 
@@ -266,7 +271,7 @@ function SummaryPage() {
                       From: {email.from}
                     </Typography>
                   </ListItem>
-                  {index < summaryData.emails.important.length - 1 && <Divider />}
+                  <Divider />
                 </React.Fragment>
               ))}
               {summaryData?.emails.important.length === 0 && (
@@ -284,8 +289,8 @@ function SummaryPage() {
             icon={<AssignmentIcon />}
           >
             <List>
-              {summaryData?.actionItems.map((item, index) => (
-                <React.Fragment key={index}>
+              {summaryData?.actionItems.map((item) => (
+                <React.Fragment key={`action-${item.task}-${item.priority}`}>
                   <ListItem 
                     sx={{ 
                       display: 'flex', 
@@ -315,7 +320,7 @@ function SummaryPage() {
                       </Box>
                     )}
                   </ListItem>
-                  {index < summaryData.actionItems.length - 1 && <Divider />}
+                  <Divider />
                 </React.Fragment>
               ))}
               {summaryData?.actionItems.length === 0 && (
@@ -333,8 +338,8 @@ function SummaryPage() {
             icon={<EmailIcon />}
           >
             <List>
-              {summaryData?.emails?.important?.slice(0, 5).map((email, index) => (
-                <React.Fragment key={index}>
+              {summaryData?.emails?.important?.slice(0, 5).map((email) => (
+                <React.Fragment key={`recent-${email.threadId}-${email.subject}`}>
                   <ListItem 
                     sx={{ 
                       display: 'flex', 
@@ -395,7 +400,7 @@ function SummaryPage() {
                       </Typography>
                     )}
                   </ListItem>
-                  {index < Math.min(summaryData.emails.important.length - 1, 4) && <Divider />}
+                  <Divider />
                 </React.Fragment>
               ))}
               {(!summaryData?.emails?.important || summaryData.emails.important.length === 0) && (

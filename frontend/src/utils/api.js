@@ -21,7 +21,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // Increased to 30 second timeout
+  timeout: 60000, // Increased to 45 second timeout
 });
 
 // Add a request interceptor to handle before request is sent
@@ -114,6 +114,16 @@ export const summary = {
   sendReply: (data) => {
     logger.info('Sending email reply');
     return api.post('/send-reply', data);
+  },
+  getAudioSummary: () => {
+    logger.info('Fetching audio summary');
+    return fetch(`${API_URL}/audio-summary`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Accept': 'audio/mpeg'
+      }
+    });
   }
 };
 
