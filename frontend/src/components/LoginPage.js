@@ -8,26 +8,46 @@ import DatabaseStatus from './common/DatabaseStatus';
 import { useAuthContext } from '../context/AuthContext';
 import logger from '../utils/logger';
 
-const StyledPaper = styled(Paper)(({ theme }) => ({
-  padding: '2rem',
+const EnhancedLoginHeader = styled(Box)(({ theme }) => ({
+  width: '100%',
+  background: 'linear-gradient(90deg, #3f51b5 0%, #f50057 100%)',
+  color: '#fff',
+  borderRadius: '18px',
+  padding: theme.spacing(4, 2, 3, 2),
+  marginBottom: theme.spacing(3),
+  boxShadow: '0 8px 24px 0 rgba(63,81,181,0.10)',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
-  gap: '1.5rem',
-  borderRadius: '12px',
-  boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
-  background: 'rgba(255, 255, 255, 0.9)',
-  backdropFilter: 'blur(10px)',
 }));
 
-const LoginButton = styled(Button)(({ theme }) => ({
-  padding: '12px 24px',
+const EnhancedPaper = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(4, 3),
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: theme.spacing(3),
+  borderRadius: '16px',
+  boxShadow: '0 8px 24px rgba(63,81,181,0.10)',
+  background: 'rgba(255,255,255,0.96)',
+  backdropFilter: 'blur(10px)',
+  maxWidth: 420,
+  margin: 'auto',
+}));
+
+const EnhancedLoginButton = styled(Button)(({ theme }) => ({
+  padding: '14px 32px',
   borderRadius: '30px',
   textTransform: 'none',
-  fontSize: '1rem',
-  boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+  fontSize: '1.08rem',
+  fontWeight: 600,
+  boxShadow: '0 4px 12px rgba(63,81,181,0.10)',
+  letterSpacing: 0.2,
+  background: 'linear-gradient(90deg, #3f51b5 0%, #f50057 100%)',
+  color: '#fff',
   '&:hover': {
-    boxShadow: '0 6px 8px rgba(0,0,0,0.15)',
+    background: 'linear-gradient(90deg, #3949ab 0%, #c51162 100%)',
+    boxShadow: '0 6px 16px rgba(63,81,181,0.15)',
   },
 }));
 
@@ -73,49 +93,59 @@ function LoginPage() {
   };
 
   return (
-    <Container maxWidth="sm">
+    <Container
+      maxWidth={false}
+      disableGutters
+      sx={{
+        minHeight: '100vh',
+        width: '100vw',
+        p: 0,
+        m: 0,
+        overflow: 'hidden',
+      }}
+    >
       <Box
         sx={{
           minHeight: '100vh',
+          width: '100vw',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           background: 'linear-gradient(135deg, #3f51b5 0%, #f50057 100%)',
-          padding: '2rem',
+          padding: 0,
+          margin: 0,
         }}
       >
-        <StyledPaper elevation={3}>
-          <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 600, color: '#2c3e50' }}>
-            Welcome to Calendar Summary
+        <EnhancedPaper elevation={3}>
+          <EnhancedLoginHeader>
+            <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 800, letterSpacing: 0.5 }}>
+              Welcome to Calendar Summary
+            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%', mb: 1 }}>
+              <DatabaseStatus status={dbStatus} />
+            </Box>
+          </EnhancedLoginHeader>
+          <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 2, fontSize: '1.08rem' }}>
+            Get a <b>smart summary</b> of your calendar events and emails in one place.<br />
+            Sign in with Google to get started.
           </Typography>
-          
-          <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%', mb: 2 }}>
-            <DatabaseStatus status={dbStatus} />
-          </Box>
-          
-          <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3 }}>
-            Get a smart summary of your calendar events and emails in one place
-          </Typography>
-          
           {error && (
             <Alert 
               severity={dbStatus !== 'available' ? 'warning' : 'error'} 
-              sx={{ width: '100%', mb: 2 }}
+              sx={{ width: '100%', mb: 2, fontSize: '1rem' }}
             >
               {error}
             </Alert>
           )}
-          
-          <LoginButton
+          <EnhancedLoginButton
             variant="contained"
-            color="primary"
             onClick={handleLogin}
             disabled={loading || dbStatus === 'unavailable'}
             startIcon={<GoogleIcon />}
           >
             {loading ? 'Connecting...' : 'Sign in with Google'}
-          </LoginButton>
-        </StyledPaper>
+          </EnhancedLoginButton>
+        </EnhancedPaper>
       </Box>
     </Container>
   );
