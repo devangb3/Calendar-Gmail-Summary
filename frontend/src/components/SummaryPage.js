@@ -7,7 +7,6 @@ import {
   Button, 
   CircularProgress,
   Alert,
-  Link,
   Chip,
   Grid,
   List,
@@ -25,7 +24,7 @@ import EmailIcon from '@mui/icons-material/Email';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
-import { auth, summary, isApiError, getErrorMessage } from '../utils/api';
+import { auth, summary, getErrorMessage } from '../utils/api';
 import DatabaseStatus from './common/DatabaseStatus';
 import DashboardCard from './common/DashboardCard';
 import PriorityBadge from './common/PriorityBadge';
