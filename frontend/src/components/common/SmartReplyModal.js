@@ -1,5 +1,4 @@
-import React, { useState, useCallback } from 'react';
-import PropTypes from 'prop-types';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -8,252 +7,164 @@ import {
   Button,
   Typography,
   Box,
-  TextField,
-  Card,
-  CardContent,
   CircularProgress,
-  Snackbar,
-  Alert,
+  TextField,
+  Chip,
 } from '@mui/material';
-import { styled } from '@mui/material/styles';
-import EditIcon from '@mui/icons-material/Edit';
-import SendIcon from '@mui/icons-material/Send';
+import PropTypes from 'prop-types';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { summary } from '../../utils/api';
 import logger from '../../utils/logger';
 
-const ReplyCard = styled(Card)(({ theme }) => ({
-  marginBottom: theme.spacing(2),
-  borderRadius: '8px',
-  cursor: 'pointer',
-  transition: 'all 0.2s ease',
-  border: `1px solid ${theme.palette.grey[300]}`,
-  '&:hover': {
-    transform: 'translateY(-2px)',
-    boxShadow: theme.shadows[4],
-    borderColor: theme.palette.primary.main,
-  },
-}));
-
-const ThreadPreview = styled(Box)(({ theme }) => ({
-  padding: theme.spacing(2),
-  backgroundColor: theme.palette.grey[50],
-  borderRadius: '8px',
-  marginBottom: theme.spacing(3),
-  maxHeight: '200px',
-  overflow: 'auto',
-}));
-
-const SmartReplyModal = ({ open, email, onClose }) => {
+function SmartReplyModal({ open, email, onClose }) {
   const [loading, setLoading] = useState(false);
-  const [replies, setReplies] = useState([]);
-  const [selectedReply, setSelectedReply] = useState(null);
-  const [editedReply, setEditedReply] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
-  const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
-  const [thread, setThread] = useState(null);
+  const [suggestions, setSuggestions] = useState([
+    "I'll look into this and get back to you soon.",
+    "Thanks for your email. I'm working on it.",
+    "Got it, will review and respond shortly."
+  ]);
+  const [customReply, setCustomReply] = useState('');
 
-  const handleClose = () => {
-    setReplies([]);
-    setSelectedReply(null);
-    setEditedReply('');
-    setIsEditing(false);
-    setError(null);
-    onClose();
-  };
-
-  const generateReplies = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Validate threadId exists and is valid
-      if (!email?.threadId || typeof email.threadId !== 'string') {
-        throw new Error('Invalid thread ID');
-      }
-
-      logger.info('Generating smart replies for email:', { threadId: email.threadId });
-      const response = await summary.getSmartReplies(email.threadId);
-      setReplies(response.data.replies);
-      setThread(response.data.thread);
-      logger.info('Smart replies generated successfully');
-    } catch (err) {
-      logger.error('Failed to generate smart replies:', err);
-      setError('Failed to generate replies. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [email]);
-
-  const handleReplySelect = (reply) => {
-    setSelectedReply(reply);
-    setEditedReply(reply);
-    setIsEditing(true);
+  const handleSuggestionClick = (suggestion) => {
+    setCustomReply(suggestion);
   };
 
   const handleSend = async () => {
+    if (!customReply.trim()) return;
+    
+    setLoading(true);
+    setError(null);
+    
     try {
-      setSending(true);
-      setError(null);
-      logger.info('Sending email reply');
-      
       await summary.sendReply({
         threadId: email.threadId,
-        reply: editedReply,
-        to: email.from_email,  // Use from_email instead of from
-        subject: `Re: ${email.subject}`
+        to: email.from_email,
+        reply: customReply.trim()
       });
-      
-      setSuccess(true);
-      logger.info('Reply sent successfully');
-      setTimeout(handleClose, 2000);
+      onClose();
     } catch (err) {
-      logger.error('Failed to send reply:', err);
-      setError('Failed to send reply. Please try again.');
+      setError(err.message || 'Failed to send reply');
+      logger.error('Failed to send email reply:', err);
     } finally {
-      setSending(false);
+      setLoading(false);
     }
   };
 
-  React.useEffect(() => {
-    if (open && email) {
-      generateReplies();
+  useEffect(() => {
+    const loadSuggestions = async () => {
+      if (email?.threadId) {
+        try {
+          const response = await summary.getSmartReplies(email.threadId);
+          if (response.data?.suggestions) {
+            setSuggestions(response.data.suggestions);
+          }
+        } catch (err) {
+          logger.error('Failed to load smart replies:', err);
+          // Keep default suggestions on error
+        }
+      }
+    };
+    
+    if (open) {
+      loadSuggestions();
     }
-  }, [open, email, generateReplies]);
+  }, [email?.threadId, open]);
+
+  if (!email) return null;
 
   return (
-    <>
-      <Dialog 
-        open={open} 
-        onClose={handleClose} 
-        maxWidth="md" 
-        fullWidth
-        PaperProps={{
-          sx: { borderRadius: '12px' }
-        }}
-      >
-        <DialogTitle>
-          <Typography variant="h6" component="div">
-            Smart Reply
+    <Dialog 
+      open={open} 
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 2,
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          backdropFilter: 'blur(20px)',
+        }
+      }}
+    >
+      <DialogTitle sx={{ pb: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AutoAwesomeIcon color="primary" />
+          <Typography variant="h6">Smart Reply</Typography>
+        </Box>
+      </DialogTitle>
+      <DialogContent>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+            Replying to: {email.sender}
           </Typography>
-          <Typography variant="subtitle2" color="text.secondary">
-            {email?.subject}
+          <Typography variant="subtitle1" gutterBottom>
+            {email.subject}
           </Typography>
-        </DialogTitle>
-        <DialogContent>
-          {thread && (
-            <ThreadPreview>
-              <Typography variant="subtitle2" gutterBottom>
-                Thread Preview:
-              </Typography>
-              {thread.messages.map((msg) => (
-                <Box key={`${msg.id}-${msg.date}`} sx={{ mb: 1 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    From: {msg.from}
-                  </Typography>
-                  <Typography variant="body2">
-                    {msg.snippet}
-                  </Typography>
-                </Box>
-              ))}
-            </ThreadPreview>
-          )}
+        </Box>
 
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress />
-            </Box>
-          ) : isEditing ? (
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              value={editedReply}
-              onChange={(e) => setEditedReply(e.target.value)}
-              variant="outlined"
-              placeholder="Edit your reply..."
-              sx={{ mt: 2 }}
+        <Typography variant="subtitle2" gutterBottom>
+          Suggested Replies:
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 3 }}>
+          {suggestions.map((suggestion) => (
+            <Chip
+              key={suggestion}
+              label={suggestion}
+              onClick={() => handleSuggestionClick(suggestion)}
+              sx={{
+                backgroundColor: 'rgba(63, 81, 181, 0.08)',
+                '&:hover': {
+                  backgroundColor: 'rgba(63, 81, 181, 0.12)',
+                },
+              }}
             />
-          ) : (
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                Choose a reply:
-              </Typography>
-              {replies.map((reply) => (
-                <ReplyCard 
-                  key={reply}
-                  onClick={() => handleReplySelect(reply)}
-                  variant="outlined"
-                >
-                  <CardContent>
-                    <Typography>{reply}</Typography>
-                  </CardContent>
-                </ReplyCard>
-              ))}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={handleClose} disabled={sending}>
-            Cancel
-          </Button>
-          {isEditing && !sending && (
-            <Button 
-              startIcon={<EditIcon />}
-              onClick={() => setIsEditing(false)}
-            >
-              Choose Another
-            </Button>
-          )}
-          {selectedReply && (
-            <Button
-              variant="contained"
-              onClick={handleSend}
-              disabled={!editedReply || sending}
-              startIcon={sending ? <CircularProgress size={20} /> : <SendIcon />}
-            >
-              {sending ? 'Sending...' : 'Send Reply'}
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
+          ))}
+        </Box>
 
-      <Snackbar
-        open={success}
-        autoHideDuration={3000}
-        onClose={() => setSuccess(false)}
-      >
-        <Alert severity="success" elevation={6} variant="filled">
-          Reply sent successfully!
-        </Alert>
-      </Snackbar>
-
-      <Snackbar
-        open={Boolean(error)}
-        autoHideDuration={5000}
-        onClose={() => setError(null)}
-      >
-        <Alert severity="error" elevation={6} variant="filled">
-          {error}
-        </Alert>
-      </Snackbar>
-    </>
+        <TextField
+          fullWidth
+          multiline
+          rows={4}
+          value={customReply}
+          onChange={(e) => setCustomReply(e.target.value)}
+          placeholder="Type your reply or click a suggestion above"
+          variant="outlined"
+          error={Boolean(error)}
+          helperText={error}
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            },
+          }}
+        />
+      </DialogContent>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose} color="inherit">
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSend}
+          variant="contained"
+          disabled={!customReply.trim() || loading}
+          startIcon={loading && <CircularProgress size={20} />}
+        >
+          Send Reply
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
-};
+}
 
 SmartReplyModal.propTypes = {
   open: PropTypes.bool.isRequired,
   email: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    threadId: PropTypes.string.isRequired,
+    sender: PropTypes.string.isRequired,
     subject: PropTypes.string.isRequired,
-    from: PropTypes.string.isRequired,
-    from_email: PropTypes.string.isRequired, // Added from_email field
-    date: PropTypes.string.isRequired,
-    snippet: PropTypes.string
+    threadId: PropTypes.string,
+    from_email: PropTypes.string,
   }),
-  onClose: PropTypes.func.isRequired
+  onClose: PropTypes.func.isRequired,
 };
 
 export default SmartReplyModal;

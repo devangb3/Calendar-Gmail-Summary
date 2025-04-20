@@ -1,58 +1,65 @@
 import React from 'react';
-import { Chip, Tooltip } from '@mui/material';
+import { Tooltip, IconButton } from '@mui/material';
 import StorageIcon from '@mui/icons-material/Storage';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import PropTypes from 'prop-types';
 
-function DatabaseStatus({ status, showLabel = true }) {
+function DatabaseStatus({ status = 'available', showLabel = true }) {
   const getStatusColor = () => {
     switch (status) {
       case 'available':
-        return 'success';
-      case 'degraded':
-        return 'warning';
+        return '#10B981'; // success green
       case 'unavailable':
-        return 'error';
+        return '#EF4444'; // error red
       default:
-        return 'default';
+        return '#F59E0B'; // warning yellow
     }
   };
 
-  const getStatusLabel = () => {
+  const getStatusIcon = () => {
     switch (status) {
       case 'available':
-        return 'Database Connected';
-      case 'degraded':
-        return 'Database Performance Issues';
+        return <CheckCircleOutlineIcon sx={{ color: getStatusColor() }} />;
       case 'unavailable':
-        return 'Database Unavailable';
+        return <ErrorOutlineIcon sx={{ color: getStatusColor() }} />;
       default:
-        return 'Database Status Unknown';
+        return <StorageIcon sx={{ color: getStatusColor() }} />;
     }
   };
 
-  const getTooltipMessage = () => {
+  const getStatusText = () => {
     switch (status) {
       case 'available':
-        return 'Database is connected and working properly';
-      case 'degraded':
-        return 'Database is experiencing performance issues';
+        return 'Database is connected';
       case 'unavailable':
-        return 'Database is currently unavailable. Some features may be limited';
+        return 'Database is disconnected';
       default:
-        return 'Unable to determine database status';
+        return 'Checking database status';
     }
   };
 
   return (
-    <Tooltip title={getTooltipMessage()}>
-      <Chip
-        icon={<StorageIcon />}
-        label={showLabel ? getStatusLabel() : null}
-        color={getStatusColor()}
-        variant="outlined"
+    <Tooltip title={getStatusText()}>
+      <IconButton
         size="small"
-      />
+        sx={{
+          p: 0.5,
+          bgcolor: `${getStatusColor()}15`,
+          '&:hover': {
+            bgcolor: `${getStatusColor()}25`,
+          },
+        }}
+      >
+        {getStatusIcon()}
+      </IconButton>
     </Tooltip>
   );
 }
+
+DatabaseStatus.propTypes = {
+  status: PropTypes.oneOf(['available', 'unavailable', 'loading']),
+  showLabel: PropTypes.bool,
+};
 
 export default DatabaseStatus;

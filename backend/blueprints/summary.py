@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, session, request, send_file
+from flask import Blueprint, jsonify, session, request, send_file, after_this_request
 from models.user import User
 from models.summary import Summary
 from services.calendar_service import CalendarService
@@ -226,21 +226,38 @@ def get_audio_summary():
         tts_service = TTSService()
         audio_file = tts_service.generate_audio_summary(cached_summary.summary_text)
         
+        if not audio_file or not os.path.exists(audio_file):
+            return format_error_response("Failed to generate audio file", 500)
+
+        @after_this_request
+        def cleanup(response):
+            try:
+                if os.path.exists(audio_file):
+                    os.unlink(audio_file)
+            except Exception as e:
+                summary_logger.warning(f"Failed to cleanup audio file: {e}")
+            return response
+
         try:
             response = send_file(
                 audio_file,
                 mimetype='audio/mpeg',
                 as_attachment=True,
-                download_name='summary.mp3'
+                download_name='summary.mp3',
+                conditional=True  # Enable partial content support
             )
-            # Add CORS headers specifically for audio streaming
+            
+            # Add headers for proper audio streaming
             response.headers['Accept-Ranges'] = 'bytes'
             response.headers['Cache-Control'] = 'no-cache'
+            response.headers['Access-Control-Expose-Headers'] = 'Content-Range, Content-Length, Content-Type'
+            response.headers['Access-Control-Allow-Headers'] = 'Range'
+            
             return response
-        finally:
-            # Clean up the temporary file after sending
-            if os.path.exists(audio_file):
-                os.unlink(audio_file)
+            
+        except Exception as e:
+            summary_logger.error(f"Error sending audio file: {e}")
+            return format_error_response("Error streaming audio file", 500)
                 
     except Exception as e:
         log_error(summary_logger, e, "Failed to generate audio summary")

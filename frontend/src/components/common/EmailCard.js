@@ -1,97 +1,129 @@
 import React from 'react';
-import PropTypes from 'prop-types';
 import {
   Card,
   CardContent,
   Typography,
-  IconButton,
   Box,
+  IconButton,
   Tooltip,
 } from '@mui/material';
-import { styled } from '@mui/material/styles';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
-import { format } from 'date-fns';
+import ReplyIcon from '@mui/icons-material/Reply';
+import StarIcon from '@mui/icons-material/Star';
+import PropTypes from 'prop-types';
+import PriorityBadge from './PriorityBadge';
 
-const StyledCard = styled(Card)(({ theme }) => ({
-  marginBottom: theme.spacing(2),
-  borderRadius: '12px',
-  border: `1px solid ${theme.palette.grey[200]}`,
-  '&:hover': {
-    boxShadow: theme.shadows[4],
-  },
-}));
+function EmailCard({ email, onSmartReply }) {
+  // Add null check for the email prop
+  if (!email) {
+    return null;
+  }
 
-const EmailMeta = styled(Typography)(({ theme }) => ({
-  color: theme.palette.text.secondary,
-  fontSize: '0.875rem',
-}));
+  const {
+    subject = 'No Subject',
+    sender = 'Unknown Sender',
+    preview = '',
+    timestamp = '',
+    priority = 'LOW',
+    isImportant = false,
+  } = email;
 
-const EmailCard = ({ email, onSmartReply }) => {
-  const formatDate = (dateString) => {
-    try {
-      return format(new Date(dateString), 'MMM d, yyyy h:mm a');
-    } catch {
-      return dateString;
-    }
+  const formatDate = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
   };
 
   return (
-    <StyledCard>
+    <Card
+      sx={{
+        mb: 2,
+        borderRadius: 2,
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid',
+        borderColor: 'divider',
+        '&:hover': {
+          boxShadow: (theme) => theme.shadows[3],
+          transform: 'translateY(-2px)',
+          transition: 'all 0.2s ease-in-out',
+        },
+      }}
+    >
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              {email.subject}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="subtitle1" component="div" fontWeight="500">
+              {sender}
             </Typography>
-            <EmailMeta>
-              From: {email.from}
-            </EmailMeta>
-            <EmailMeta>
-              {formatDate(email.date)}
-            </EmailMeta>
+            {isImportant && (
+              <StarIcon
+                fontSize="small"
+                sx={{ color: (theme) => theme.palette.warning.main }}
+              />
+            )}
           </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PriorityBadge priority={priority} />
+            <Typography variant="caption" color="text.secondary">
+              {formatDate(timestamp)}
+            </Typography>
+          </Box>
+        </Box>
+
+        <Typography variant="h6" gutterBottom sx={{ fontSize: '1rem', fontWeight: 500 }}>
+          {subject}
+        </Typography>
+
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            mb: 2,
+          }}
+        >
+          {preview}
+        </Typography>
+
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
           <Tooltip title="Generate Smart Reply">
-            <IconButton 
-              onClick={() => onSmartReply(email)} 
-              color="primary"
-              sx={{ 
-                '&:hover': { 
-                  backgroundColor: 'rgba(63, 81, 181, 0.08)' 
-                } 
+            <IconButton
+              size="small"
+              onClick={() => onSmartReply(email)}
+              sx={{
+                backgroundColor: (theme) => theme.palette.primary.main + '10',
+                '&:hover': {
+                  backgroundColor: (theme) => theme.palette.primary.main + '20',
+                },
               }}
             >
-              <SmartToyIcon />
+              <ReplyIcon fontSize="small" color="primary" />
             </IconButton>
           </Tooltip>
         </Box>
-        <Typography 
-          variant="body1" 
-          color="text.primary"
-          sx={{ 
-            mt: 2,
-            whiteSpace: 'pre-line',
-            maxHeight: '100px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {email.snippet}
-        </Typography>
       </CardContent>
-    </StyledCard>
+    </Card>
   );
-};
+}
 
 EmailCard.propTypes = {
   email: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    threadId: PropTypes.string.isRequired,
-    subject: PropTypes.string.isRequired,
-    from: PropTypes.string.isRequired,
-    date: PropTypes.string.isRequired,
-    snippet: PropTypes.string.isRequired
-  }).isRequired,
-  onSmartReply: PropTypes.func.isRequired
+    subject: PropTypes.string,
+    sender: PropTypes.string,
+    preview: PropTypes.string,
+    timestamp: PropTypes.string,
+    priority: PropTypes.oneOf(['HIGH', 'MEDIUM', 'LOW']),
+    isImportant: PropTypes.bool,
+  }),
+  onSmartReply: PropTypes.func.isRequired,
 };
 
 export default EmailCard;

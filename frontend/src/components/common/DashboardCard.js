@@ -1,34 +1,47 @@
 import React from 'react';
-import { Paper, Box, Typography } from '@mui/material';
-import { styled } from '@mui/material/styles';
+import { Paper, Typography, Box } from '@mui/material';
+import PropTypes from 'prop-types';
 
-const StyledPaper = styled(Paper)(({ theme }) => ({
-  padding: theme.spacing(3),
-  borderRadius: '16px',
-  background: '#fff',
-  boxShadow: '0 4px 20px 0 rgba(0, 0, 0, 0.05)',
-  border: '1px solid rgba(63, 81, 181, 0.08)',
-  height: '100%',
-  display: 'flex',
-  flexDirection: 'column',
-}));
-
-const DashboardCard = ({ title, icon, children }) => {
+function DashboardCard({ title, subtitle, children, action, elevation = 0 }) {
   return (
-    <StyledPaper>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        {icon && (
-          <Box sx={{ mr: 1.5, color: 'primary.main', display: 'flex' }}>
-            {icon}
-          </Box>
-        )}
-        <Typography variant="h6" component="h2" color="primary">
-          {title}
-        </Typography>
+    <Paper
+      elevation={elevation}
+      sx={{
+        p: 3,
+        height: '100%',
+        borderRadius: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        backdropFilter: 'blur(20px)',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+        <Box>
+          {title && (
+            <Typography variant="h6" gutterBottom={!!subtitle}>
+              {title}
+            </Typography>
+          )}
+          {subtitle && (
+            <Typography variant="body2" color="text.secondary">
+              {subtitle}
+            </Typography>
+          )}
+        </Box>
+        {action && <Box>{action}</Box>}
       </Box>
-      {children}
-    </StyledPaper>
+      <Box sx={{ flexGrow: 1 }}>{children}</Box>
+    </Paper>
   );
+}
+
+DashboardCard.propTypes = {
+  title: PropTypes.string,
+  subtitle: PropTypes.string,
+  children: PropTypes.node,
+  action: PropTypes.node,
+  elevation: PropTypes.number,
 };
 
 export default DashboardCard;

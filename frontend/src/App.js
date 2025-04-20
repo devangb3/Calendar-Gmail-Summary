@@ -1,15 +1,19 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import Box from '@mui/material/Box';
 import { AuthProvider } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
 import SummaryPage from './components/SummaryPage';
+import CalendarPage from './components/pages/CalendarPage';
+import EmailPage from './components/pages/EmailPage';
+import TasksPage from './components/pages/TasksPage';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import LoadingSpinner from './components/common/LoadingSpinner';
+import AppSidebar from './components/common/AppSidebar';
 import { useAuthContext } from './context/AuthContext';
 
-// Create theme
 const theme = createTheme({
   palette: {
     mode: 'light',
@@ -33,7 +37,19 @@ const theme = createTheme({
       '"Helvetica Neue"',
       'Arial',
       'sans-serif',
+      '"Apple Color Emoji"',
+      '"Segoe UI Emoji"',
+      '"Segoe UI Symbol"',
     ].join(','),
+    h4: {
+      fontWeight: 700,
+    },
+    h5: {
+      fontWeight: 600,
+    },
+    h6: {
+      fontWeight: 600,
+    },
   },
   components: {
     MuiButton: {
@@ -41,50 +57,70 @@ const theme = createTheme({
         root: {
           borderRadius: 8,
           textTransform: 'none',
+          fontWeight: 500,
         },
       },
     },
     MuiPaper: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
+          borderRadius: 16,
+          boxShadow: '0 4px 12px 0 rgba(0, 0, 0, 0.05)',
         },
       },
     },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          borderRadius: 16,
+          boxShadow: '0 4px 12px 0 rgba(0, 0, 0, 0.05)',
+        },
+      },
+    },
+    MuiDrawer: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: '#ffffff',
+          borderRight: '1px solid rgba(0, 0, 0, 0.08)',
+        }
+      }
+    }
   },
 });
 
-// Protected Route Component
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuthContext();
-  const location = useLocation();
 
   if (loading) {
-    return <LoadingSpinner message="Checking authentication..." />;
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <LoadingSpinner message="Checking authentication..." />
+      </Box>
+    );
   }
 
   if (!isAuthenticated) {
-    // Keep track of where they were trying to go
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/login" replace />;
   }
 
-  return children;
-}
-
-function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <SummaryPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Box sx={{ display: 'flex' }}>
+      <CssBaseline />
+      <AppSidebar />
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          bgcolor: 'background.default',
+          p: 3,
+          minHeight: '100vh',
+          overflow: 'auto',
+        }}
+      >
+        <Box sx={{ height: '64px' }} /> {/* Toolbar spacer */}
+        {children}
+      </Box>
+    </Box>
   );
 }
 
@@ -92,10 +128,44 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider theme={theme}>
-        <CssBaseline />
         <Router>
           <AuthProvider>
-            <AppRoutes />
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <SummaryPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/calendar"
+                element={
+                  <ProtectedRoute>
+                    <CalendarPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/emails"
+                element={
+                  <ProtectedRoute>
+                    <EmailPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tasks"
+                element={
+                  <ProtectedRoute>
+                    <TasksPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
           </AuthProvider>
         </Router>
       </ThemeProvider>

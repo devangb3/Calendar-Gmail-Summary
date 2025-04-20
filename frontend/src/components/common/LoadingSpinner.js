@@ -1,22 +1,27 @@
 import React from 'react';
 import { Box, CircularProgress, Typography } from '@mui/material';
+import PropTypes from 'prop-types';
 
 function LoadingSpinner({ message = 'Loading...' }) {
   return (
     <Box
-      display="flex"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      minHeight="200px"
-      gap={2}
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 2,
+      }}
     >
-      <CircularProgress />
-      <Typography variant="body1" color="text.secondary">
+      <CircularProgress size={40} />
+      <Typography variant="body2" color="text.secondary">
         {message}
       </Typography>
     </Box>
   );
 }
+
+LoadingSpinner.propTypes = {
+  message: PropTypes.string,
+};
 
 export default LoadingSpinner;

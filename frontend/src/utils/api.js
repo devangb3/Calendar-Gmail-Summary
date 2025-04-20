@@ -115,15 +115,27 @@ export const summary = {
     logger.info('Sending email reply');
     return api.post('/send-reply', data);
   },
-  getAudioSummary: () => {
+  getAudioSummary: async () => {
     logger.info('Fetching audio summary');
-    return fetch(`${API_URL}/audio-summary`, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        'Accept': 'audio/mpeg'
+    try {
+      const response = await api({
+        url: '/audio-summary',
+        method: 'GET',
+        responseType: 'blob',
+        headers: {
+          'Accept': 'audio/mpeg, audio/*'
+        }
+      });
+      
+      if (!response.data) {
+        throw new Error('No audio data received');
       }
-    });
+      
+      return response;
+    } catch (error) {
+      logger.error('Failed to fetch audio summary:', error);
+      throw error;
+    }
   }
 };
 

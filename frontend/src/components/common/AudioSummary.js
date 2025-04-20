@@ -1,158 +1,303 @@
-import React, { useState, useEffect } from 'react';
-import { 
+import React, { useState, useRef, useEffect } from 'react';
+import {
   Box,
   IconButton,
-  LinearProgress,
-  Alert 
+  Slider,
+  Typography,
+  Paper,
+  Tooltip,
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
-import { summary } from '../../utils/api';
-import logger from '../../utils/logger';
+import VolumeOffIcon from '@mui/icons-material/VolumeOff';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import DownloadIcon from '@mui/icons-material/Download';
+import PropTypes from 'prop-types';
 
-const AudioSummary = () => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [audio, setAudio] = useState(null);
+// Create a static audio state to persist between component unmounts
+const globalAudioState = {
+  currentTime: 0,
+  isPlaying: false,
+  volume: 1,
+  isMuted: false
+};
+
+function AudioSummary({ audioUrl, title = 'Daily Summary' }) {
+  const [isPlaying, setIsPlaying] = useState(globalAudioState.isPlaying);
+  const [isMuted, setIsMuted] = useState(globalAudioState.isMuted);
+  const [currentTime, setCurrentTime] = useState(globalAudioState.currentTime);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(globalAudioState.volume);
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [audioUrl, setAudioUrl] = useState(null);
+  const audioRef = useRef(null);
 
   useEffect(() => {
+    if (!audioUrl) return;
+
+    // Create new audio element when URL changes
+    if (audioRef.current) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      globalAudioState.isPlaying = false;
+    }
+
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+
+    // Set up initial state
+    audio.currentTime = globalAudioState.currentTime;
+    audio.volume = globalAudioState.isMuted ? 0 : globalAudioState.volume;
+
+    // Add event listeners
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', () => {
+      setIsPlaying(false);
+      globalAudioState.isPlaying = false;
+    });
+    audio.addEventListener('error', (e) => {
+      console.error('Audio error:', e);
+      setError('Failed to load audio');
+      setIsPlaying(false);
+      globalAudioState.isPlaying = false;
+    });
+
     return () => {
-      // Cleanup function to revoke object URL and stop audio
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-      }
-      if (audio) {
-        audio.pause();
-        audio.currentTime = 0;
+      if (audioRef.current) {
+        // Save state before cleanup
+        globalAudioState.currentTime = audioRef.current.currentTime;
+        globalAudioState.isPlaying = !audioRef.current.paused;
+        globalAudioState.volume = volume;
+        globalAudioState.isMuted = isMuted;
+        
+        // Remove event listeners
+        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        audio.removeEventListener('timeupdate', handleTimeUpdate);
+        audio.removeEventListener('ended', () => {});
+        audio.removeEventListener('error', () => {});
+        
+        // Cleanup audio element
+        audioRef.current.pause();
+        audioRef.current = null;
       }
     };
-  }, [audio, audioUrl]);
+  }, [audioUrl]);
 
-  const fetchAudioSummary = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      logger.info('Fetching audio summary');
-      
-      const response = await summary.getAudioSummary();
-      if (!response.ok) {
-        throw new Error('Failed to fetch audio summary');
+  const handlePlayPause = () => {
+    if (!audioRef.current) return;
+
+    if (audioRef.current.paused) {
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            globalAudioState.isPlaying = true;
+            setError(null);
+          })
+          .catch(error => {
+            console.error('Error playing audio:', error);
+            setIsPlaying(false);
+            globalAudioState.isPlaying = false;
+            setError('Failed to play audio');
+          });
       }
-      
-      const blob = await response.blob();
-      if (!blob || blob.size === 0) {
-        throw new Error('Received empty audio data');
-      }
-      
-      const url = URL.createObjectURL(blob);
-      
-      // Create new audio object
-      const newAudio = new Audio(url);
-      
-      // Set up event listeners
-      newAudio.addEventListener('timeupdate', () => {
-        const percent = (newAudio.currentTime / newAudio.duration) * 100;
-        setProgress(percent);
-      });
-
-      newAudio.addEventListener('ended', () => {
-        setIsPlaying(false);
-        setProgress(0);
-      });
-
-      newAudio.addEventListener('error', (e) => {
-        logger.error('Audio playback error:', e);
-        setError('Failed to play audio. Please try again.');
-        setIsPlaying(false);
-      });
-
-      // Update state
-      setAudioUrl(url);
-      setAudio(newAudio);
-      setLoading(false);
-      
-      // Start playing automatically
-      try {
-        await newAudio.play();
-        setIsPlaying(true);
-      } catch (err) {
-        logger.error('Failed to start audio playback:', err);
-        setError('Failed to start audio playback. Please try again.');
-      }
-      
-    } catch (err) {
-      logger.error('Failed to fetch audio summary:', err);
-      setError('Failed to load audio summary. Please try again.');
-      setLoading(false);
-    }
-  };
-
-  const togglePlay = async () => {
-    if (!audio) {
-      await fetchAudioSummary();
-      return;
-    }
-
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
     } else {
-      try {
-        await audio.play();
-        setIsPlaying(true);
-      } catch (err) {
-        logger.error('Failed to play audio:', err);
-        setError('Failed to play audio. Please try again.');
-      }
+      audioRef.current.pause();
+      setIsPlaying(false);
+      globalAudioState.isPlaying = false;
     }
   };
 
-  if (error) {
-    return (
-      <Alert severity="error" onClose={() => setError(null)}>
-        {error}
-      </Alert>
-    );
-  }
+  const handleTimeUpdate = () => {
+    if (!audioRef.current) return;
+    setCurrentTime(audioRef.current.currentTime);
+    globalAudioState.currentTime = audioRef.current.currentTime;
+  };
+
+  const handleLoadedMetadata = () => {
+    if (!audioRef.current) return;
+    setDuration(audioRef.current.duration);
+  };
+
+  const handleSeek = (event, newValue) => {
+    if (!audioRef.current) return;
+    const time = newValue;
+    audioRef.current.currentTime = time;
+    setCurrentTime(time);
+    globalAudioState.currentTime = time;
+  };
+
+  const handleVolumeChange = (event, newValue) => {
+    if (!audioRef.current) return;
+    const vol = newValue;
+    audioRef.current.volume = vol;
+    setVolume(vol);
+    setIsMuted(vol === 0);
+    globalAudioState.volume = vol;
+    globalAudioState.isMuted = vol === 0;
+  };
+
+  const handleMuteToggle = () => {
+    if (!audioRef.current) return;
+    if (isMuted) {
+      audioRef.current.volume = volume || 1;
+      setIsMuted(false);
+      globalAudioState.isMuted = false;
+    } else {
+      audioRef.current.volume = 0;
+      setIsMuted(true);
+      globalAudioState.isMuted = true;
+    }
+  };
+
+  const handleRestart = () => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = 0;
+    setCurrentTime(0);
+    globalAudioState.currentTime = 0;
+    if (!isPlaying) {
+      handlePlayPause();
+    }
+  };
+
+  const formatTime = (timeInSeconds) => {
+    const minutes = Math.floor(timeInSeconds / 60);
+    const seconds = Math.floor(timeInSeconds % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Check if audio URL is valid
+  const isAudioAvailable = Boolean(audioUrl);
 
   return (
-    <Box sx={{ 
-      display: 'flex', 
-      alignItems: 'center', 
-      gap: 2, 
-      p: 2, 
-      borderRadius: 2,
-      bgcolor: 'background.paper',
-      boxShadow: 1
-    }}>
-      <IconButton 
-        onClick={togglePlay} 
-        color="primary"
-        size="large"
-        disabled={loading}
-      >
-        {isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
-      </IconButton>
-      
-      <Box sx={{ flexGrow: 1 }}>
-        {loading ? (
-          <LinearProgress />
+    <Paper
+      elevation={0}
+      sx={{
+        p: 3,
+        borderRadius: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        backdropFilter: 'blur(20px)',
+      }}
+    >
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          {title}
+        </Typography>
+
+        {!isAudioAvailable ? (
+          <Typography color="text.secondary" align="center">
+            No audio summary available
+          </Typography>
         ) : (
-          <LinearProgress 
-            variant="determinate" 
-            value={progress} 
-            sx={{ height: 8, borderRadius: 4 }}
-          />
+          <>
+            {error && (
+              <Typography color="error" align="center" sx={{ mb: 1 }}>
+                {error}
+              </Typography>
+            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <IconButton
+                onClick={handlePlayPause}
+                disabled={!isAudioAvailable}
+                sx={{
+                  p: 1.5,
+                  color: 'primary.main',
+                  bgcolor: 'primary.light',
+                  '&:hover': {
+                    bgcolor: 'primary.main',
+                    color: 'white',
+                  },
+                }}
+              >
+                {isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
+              </IconButton>
+
+              <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 40 }}>
+                  {formatTime(currentTime)}
+                </Typography>
+                <Slider
+                  value={currentTime}
+                  max={duration || 100}
+                  onChange={handleSeek}
+                  disabled={!isAudioAvailable}
+                  aria-label="audio progress"
+                  sx={{
+                    color: 'primary.main',
+                    '& .MuiSlider-thumb': {
+                      width: 12,
+                      height: 12,
+                      '&:hover, &.Mui-focusVisible': {
+                        boxShadow: '0 0 0 8px rgba(63, 81, 181, 0.16)',
+                      },
+                    },
+                  }}
+                />
+                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 40 }}>
+                  {formatTime(duration)}
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Tooltip title="Restart">
+                  <IconButton 
+                    size="small" 
+                    onClick={handleRestart}
+                    disabled={!isAudioAvailable}
+                  >
+                    <RestartAltIcon />
+                  </IconButton>
+                </Tooltip>
+                <Box sx={{ display: 'flex', alignItems: 'center', width: 140 }}>
+                  <IconButton 
+                    size="small" 
+                    onClick={handleMuteToggle}
+                    disabled={!isAudioAvailable}
+                  >
+                    {isMuted ? <VolumeOffIcon /> : <VolumeUpIcon />}
+                  </IconButton>
+                  <Slider
+                    size="small"
+                    value={isMuted ? 0 : volume}
+                    onChange={handleVolumeChange}
+                    disabled={!isAudioAvailable}
+                    max={1}
+                    step={0.1}
+                    aria-label="Volume"
+                    sx={{
+                      width: 80,
+                      ml: 1,
+                      color: 'primary.main',
+                    }}
+                  />
+                </Box>
+                {audioUrl && (
+                  <Tooltip title="Download audio">
+                    <IconButton
+                      size="small"
+                      component="a"
+                      href={audioUrl}
+                      download="summary.mp3"
+                      sx={{ color: 'primary.main' }}
+                    >
+                      <DownloadIcon />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </Box>
+            </Box>
+          </>
         )}
       </Box>
-      
-      <VolumeUpIcon color="primary" />
-    </Box>
+    </Paper>
   );
+}
+
+AudioSummary.propTypes = {
+  audioUrl: PropTypes.string,
+  title: PropTypes.string,
 };
 
 export default AudioSummary;

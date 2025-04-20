@@ -4,13 +4,27 @@ from tempfile import NamedTemporaryFile
 import json
 from utils.logger import summary_logger, log_error
 from services.gemini_service import GeminiService
+import atexit
 
 class TTSService:
     def __init__(self):
         self.gemini_service = GeminiService()
-        
+        self._temp_files = set()  # Using regular set instead of WeakSet
+        atexit.register(self._cleanup_temp_files)
+
+    def _cleanup_temp_files(self):
+        """Clean up any temporary files on service shutdown"""
+        for filepath in list(self._temp_files):  # Create a list to avoid modifying set during iteration
+            try:
+                if os.path.exists(filepath):
+                    os.unlink(filepath)
+                self._temp_files.remove(filepath)
+            except Exception as e:
+                summary_logger.warning(f"Failed to cleanup temp file {filepath}: {e}")
+
     def generate_audio_summary(self, summary_json):
         """Generate an audio summary from the summary JSON data"""
+        temp_file = None
         try:
             summary_logger.info("Generating audio summary")
             
@@ -22,23 +36,32 @@ class TTSService:
                 
             # Generate a concise script for the audio summary
             script = self._generate_summary_script(summary_data)
+            if not script:
+                raise ValueError("Failed to generate audio script")
             
             # Create audio file using gTTS
             tts = gTTS(text=script, lang='en', slow=False)
             
             # Create a temporary file with .mp3 extension
             temp_file = NamedTemporaryFile(suffix='.mp3', delete=False)
+            self._temp_files.add(temp_file.name)
+            
             try:
                 tts.save(temp_file.name)
                 summary_logger.info("Audio summary generated successfully")
                 return temp_file.name
             except Exception as e:
-                if os.path.exists(temp_file.name):
+                if temp_file and os.path.exists(temp_file.name):
                     os.unlink(temp_file.name)
-                raise e
+                    self._temp_files.remove(temp_file.name)
+                raise ValueError(f"Failed to save audio file: {str(e)}")
                 
         except Exception as e:
             log_error(summary_logger, e, "Failed to generate audio summary")
+            if temp_file and os.path.exists(temp_file.name):
+                os.unlink(temp_file.name)
+                if temp_file.name in self._temp_files:
+                    self._temp_files.remove(temp_file.name)
             raise
             
     def _generate_summary_script(self, summary_data):
