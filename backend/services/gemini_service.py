@@ -133,7 +133,7 @@ class GeminiService:
         try:
             summary_logger.debug("Creating prompt for summary generation")
             
-            # Format calendar events
+            # Format calendar events and emails
             events_text = self._format_events(calendar_events)
             emails_text = self._format_emails(emails)
 
@@ -141,7 +141,7 @@ class GeminiService:
 
 {{
   "quickSummary": {{
-    "overview": "A 3-4 line comprehensive overview of the day, highlighting key events, important meetings, deadlines, and critical emails. Include specific times and key action items that need immediate attention.",
+    "overview": "A 3-4 line comprehensive overview of the day, highlighting key events, important meetings, deadlines, critical emails, and any pending calendar invites that need attention. Include specific times and key action items that need immediate attention.",
     "priority_level": "HIGH|MEDIUM|LOW"
   }},
   "events": {{
@@ -151,7 +151,8 @@ class GeminiService:
         "title": "<event title>",
         "time": "<formatted time>",
         "priority": "HIGH|MEDIUM|LOW",
-        "type": "MEETING|DEADLINE|PERSONAL|OTHER"
+        "type": "MEETING|DEADLINE|PERSONAL|OTHER",
+        "needsResponse": true|false
       }}
     ]
   }},
@@ -194,13 +195,16 @@ Rules:
 4. If no events or emails exist, return empty arrays but maintain the structure
 5. Type for events should be inferred from the content
 6. Keep email subjects, sender names, and email addresses exactly as provided in the original data
+7. Set needsResponse to true for any calendar events that are pending invites requiring user response
+8. Include action items for responding to calendar invites that need attention
 
 Remember to:
 - Keep the JSON structure exactly as shown
 - Make the summary detailed but concise
 - Include all fields even if empty
 - Validate JSON format
-- Use priority consistently"""
+- Use priority consistently
+- Highlight pending calendar invites that need attention"""
             
             summary_logger.debug("Successfully created prompt")
             return prompt

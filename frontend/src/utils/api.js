@@ -127,6 +127,17 @@ export const summary = {
   }
 };
 
+export const calendar = {
+  getPendingInvites: () => {
+    logger.info('Fetching pending calendar invites');
+    return api.get('/pending-invites');
+  },
+  acceptInvite: (eventId) => {
+    logger.info('Accepting calendar invite:', eventId);
+    return api.post(`/accept-invite/${eventId}`);
+  }
+};
+
 // Helper function to check if error is an API error
 export const isApiError = (error) => {
   return error instanceof ApiError || error?.isAxiosError || error?.response !== undefined;

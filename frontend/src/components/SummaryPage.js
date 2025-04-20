@@ -30,6 +30,7 @@ import DashboardCard from './common/DashboardCard';
 import PriorityBadge from './common/PriorityBadge';
 import SmartReplyModal from './common/SmartReplyModal';
 import AudioSummary from './common/AudioSummary';
+import CalendarInvites from './common/CalendarInvites';
 import logger from '../utils/logger';
 
 const EnhancedHeader = styled(Box)(({ theme }) => ({
@@ -195,6 +196,18 @@ function SummaryPage() {
       )}
 
       <Grid container spacing={3}>
+        {/* Add Calendar Invites section at the top */}
+        <Grid item xs={12}>
+          <DashboardCard 
+            title="Pending Calendar Invites" 
+            icon={<EventIcon />}
+          >
+            <CalendarInvites 
+              onInviteAccepted={() => fetchSummary(true)} 
+            />
+          </DashboardCard>
+        </Grid>
+
         <Grid item xs={12} md={6}>
           <DashboardCard 
             title="Upcoming Events" 

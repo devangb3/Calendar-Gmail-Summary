@@ -6,6 +6,7 @@ import logger from '../utils/logger';
 export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export function useAuth() {
     } catch (error) {
       logger.error('Auth check failed:', error);
       setIsAuthenticated(false);
+      setAuthError(error.message);
       if (window.location.pathname !== '/login') {
         navigate('/login');
       }
@@ -33,12 +35,18 @@ export function useAuth() {
 
   const login = async () => {
     try {
+      setAuthError(null);
       const response = await auth.login();
       if (response.data?.authorization_url) {
+        // Store required scopes info in session storage for verification
+        if (response.data.scope_info) {
+          sessionStorage.setItem('scope_info', JSON.stringify(response.data.scope_info));
+        }
         window.location.href = response.data.authorization_url;
       }
     } catch (error) {
       logger.error('Login failed:', error);
+      setAuthError(error.response?.data?.message || error.message);
       throw error;
     }
   };
@@ -47,6 +55,7 @@ export function useAuth() {
     try {
       await auth.logout();
       setIsAuthenticated(false);
+      sessionStorage.removeItem('scope_info'); // Clear stored scope info
       navigate('/login');
     } catch (error) {
       logger.error('Logout failed:', error);
@@ -57,6 +66,7 @@ export function useAuth() {
   return {
     isAuthenticated,
     isLoading,
+    authError,
     login,
     logout,
     checkAuthStatus

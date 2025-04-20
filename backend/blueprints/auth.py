@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, session, redirect
 from services.auth_service import AuthService
 from models.user import User
-from config.settings import FRONTEND_URL
+from config.settings import FRONTEND_URL, SCOPES  # Add SCOPES import
 from config.database import Database
 from utils.helpers import format_error_response
 from utils.logger import auth_logger, log_error
@@ -15,18 +15,22 @@ def login():
         auth_logger.info("Login attempt initiated")
         authorization_url = auth_service.get_authorization_url()
         auth_logger.info("Generated authorization URL successfully")
-        return jsonify({"authorization_url": authorization_url})
+        return jsonify({
+            "authorization_url": authorization_url,
+            "scope_info": {
+                "required_scopes": SCOPES,
+                "prompt": "consent"  # Indicates we're forcing consent screen
+            }
+        })
     except Exception as e:
         error_message = str(e)
-        if 'scope' in error_message.lower():
-            auth_logger.warning("Scope-related error during login, clearing session")
-            session.clear()
-            return jsonify({
-                "error": "Authentication scope has changed. Please sign in again.",
-                "authorization_url": auth_service.get_authorization_url()
-            })
-        log_error(auth_logger, e, "Login failed")
-        return format_error_response(e, 500)
+        auth_logger.error(f"Login error: {error_message}")
+        session.clear()  # Clear session on any error
+        return format_error_response({
+            "error": "Authentication error",
+            "message": error_message,
+            "action": "Please try logging in again to grant the required permissions."
+        }, 500)
 
 @auth_bp.route('/logout')
 def logout():

@@ -56,6 +56,7 @@ class CalendarService:
         end = event.get('end', {}).get('dateTime', event.get('end', {}).get('date'))
         
         return {
+            'id': event.get('id'),  # Add event ID
             'summary': event.get('summary', 'No Title'),
             'start': start,
             'end': end,
@@ -68,3 +69,104 @@ class CalendarService:
             'status': event.get('status', ''),
             'htmlLink': event.get('htmlLink', '')
         }
+
+    def accept_calendar_invite(self, event_id):
+        """Accept a calendar invitation"""
+        try:
+            api_logger.info(f"Accepting calendar invite for event: {event_id}")
+            
+            # Get the event first to check if we need to handle it
+            event = self.service.events().get(
+                calendarId='primary',
+                eventId=event_id
+            ).execute()
+            
+            # Find the attendee that matches the authenticated user
+            user_email = self.service.calendarList().get(calendarId='primary').execute().get('id')
+            user_attendee = next(
+                (attendee for attendee in event.get('attendees', [])
+                if attendee.get('email') == user_email),
+                None
+            )
+            
+            if not user_attendee:
+                api_logger.warning(f"User not found in attendee list for event: {event_id}")
+                return False
+                
+            if user_attendee.get('responseStatus') == 'accepted':
+                api_logger.info("Event already accepted")
+                return True
+                
+            # Update the attendee's response status
+            user_attendee['responseStatus'] = 'accepted'
+            
+            # Update the event
+            self.service.events().patch(
+                calendarId='primary',
+                eventId=event_id,
+                body={'attendees': event.get('attendees', [])},
+                sendUpdates='all'  # Notify other attendees
+            ).execute()
+            
+            api_logger.info(f"Successfully accepted calendar invite for event: {event_id}")
+            return True
+            
+        except Exception as e:
+            log_error(api_logger, e, f"Failed to accept calendar invite for event: {event_id}")
+            raise
+            
+    def get_pending_invites(self):
+        """Get list of pending calendar invitations"""
+        try:
+            api_logger.info("Fetching pending calendar invites")
+            
+            # Get user's email
+            user_email = self.service.calendarList().get(calendarId='primary').execute().get('id')
+            
+            # Get events where user's response is needed or not responded
+            # Look for future events within next 30 days
+            time_min = datetime.now(timezone.utc)
+            time_max = time_min + timedelta(days=30)
+            
+            events_result = self.service.events().list(
+                calendarId='primary',
+                timeMin=time_min.isoformat(),
+                timeMax=time_max.isoformat(),
+                maxResults=20,  # Increased to catch more potential invites
+                singleEvents=True,
+                orderBy='startTime',
+                showDeleted=False,
+                fields='items(id,summary,start,end,attendees,location,status,description,htmlLink)'  # Optimize response
+            ).execute()
+            
+            events = events_result.get('items', [])
+            pending_invites = []
+            
+            for event in events:
+                # Skip events without attendees (not an invitation)
+                if not event.get('attendees'):
+                    continue
+                    
+                # Check if user is an attendee and hasn't responded
+                attendees = event.get('attendees', [])
+                user_attendee = next(
+                    (attendee for attendee in attendees 
+                    if attendee.get('email') == user_email and 
+                    attendee.get('responseStatus') in ['needsAction', 'tentative']),  # Include tentative responses
+                    None
+                )
+                
+                # Only include if user is an attendee who needs to respond
+                # and event is not cancelled
+                if (user_attendee and 
+                    event.get('status') != 'cancelled'):
+                    formatted_event = self._format_event(event)
+                    formatted_event['responseStatus'] = user_attendee.get('responseStatus', 'needsAction')
+                    pending_invites.append(formatted_event)
+                    
+            api_logger.info(f"Found {len(pending_invites)} pending invites")
+            return pending_invites
+            
+        except Exception as e:
+            log_error(api_logger, e, "Failed to fetch pending invites")
+            raise

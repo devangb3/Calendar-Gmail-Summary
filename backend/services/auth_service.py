@@ -11,6 +11,18 @@ from config.settings import (
     SCOPES
 )
 
+class AuthServiceError(Exception):
+    """Base exception for authentication service errors."""
+    pass
+
+class ScopeMismatchError(AuthServiceError):
+    """Exception raised when OAuth scopes don't match requirements."""
+    pass
+
+class CredentialsError(AuthServiceError):
+    """Exception raised when there are issues with credentials."""
+    pass
+
 class AuthService:
     def __init__(self):
         self.flow = None
@@ -34,9 +46,9 @@ class AuthService:
             self.flow = self._create_flow()
             authorization_url, state = self.flow.authorization_url(
                 access_type='offline',
-                include_granted_scopes='true',
-                prompt='consent',
-                state='calendar_summary_auth'  # Add state parameter for security
+                include_granted_scopes='false',  # Don't include previously granted scopes
+                prompt='consent',  # Always show consent screen
+                state='calendar_summary_auth'
             )
             self.state = state
             return authorization_url
@@ -61,11 +73,18 @@ class AuthService:
             granted_scopes = set(self.flow.credentials.scopes)
             required_scopes = set(SCOPES)
             
-            if not required_scopes.issubset(granted_scopes):
+            # Check for exact scope match instead of subset
+            if required_scopes != granted_scopes:
                 missing_scopes = required_scopes - granted_scopes
-                raise Exception(f"Missing required scopes: {', '.join(missing_scopes)}")
+                extra_scopes = granted_scopes - required_scopes
+                error_msg = []
+                if missing_scopes:
+                    error_msg.append(f"Missing required scopes: {', '.join(missing_scopes)}")
+                if extra_scopes:
+                    error_msg.append(f"Extra scopes granted: {', '.join(extra_scopes)}")
+                raise ScopeMismatchError(". ".join(error_msg))
             
-            auth_logger.info("Successfully obtained access token")
+            auth_logger.info("Successfully obtained access token with correct scopes")
             return {
                 'token': self.flow.credentials.token,
                 'refresh_token': self.flow.credentials.refresh_token,
@@ -122,4 +141,4 @@ class AuthService:
                 scopes=credentials_dict['scopes']
             )
         except KeyError as e:
-            raise Exception(f"Missing required credential field: {e}")
+            raise CredentialsError(f"Missing required credential field: {e}")

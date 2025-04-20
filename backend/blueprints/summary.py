@@ -69,7 +69,7 @@ def get_summary():
                 time_min=datetime.now(timezone.utc).isoformat(),
                 time_max=(datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
             )
-            raw_emails = gmail_service.get_recent_emails(max_results=20)  # Get up to 20 emails for summary
+            raw_emails = gmail_service.get_recent_emails(max_results=10)  # Get up to 20 emails for summary
             
             # Format emails to ensure threadId and other required fields are included
             formatted_emails = []
@@ -244,6 +244,73 @@ def get_audio_summary():
                 
     except Exception as e:
         log_error(summary_logger, e, "Failed to generate audio summary")
+        return format_error_response(str(e), 500)
+
+@summary_bp.route('/pending-invites')
+def get_pending_invites():
+    """Get list of pending calendar invitations"""
+    try:
+        summary_logger.info("Pending invites request initiated")
+        user_id = session.get('user_id')
+        if not user_id:
+            summary_logger.warning("Unauthorized pending invites request")
+            return format_error_response(UNAUTHORIZED_ERROR, 401)
+
+        # Get user and check credentials
+        user = User.find_by_id(user_id)
+        if not user:
+            summary_logger.error(f"User {user_id} not found")
+            return format_error_response(USER_NOT_FOUND_ERROR, 401)
+            
+        credentials = user.credentials
+        if not credentials:
+            summary_logger.error(f"No valid credentials found for user {user_id}")
+            return format_error_response(NO_CREDENTIALS_ERROR, 401)
+
+        # Get pending invites using calendar service
+        calendar_service = CalendarService(credentials)
+        pending_invites = calendar_service.get_pending_invites()
+        
+        return jsonify({
+            "pending_invites": pending_invites
+        })
+
+    except Exception as e:
+        log_error(summary_logger, e, "Failed to get pending invites")
+        return format_error_response(str(e), 500)
+
+@summary_bp.route('/accept-invite/<event_id>', methods=['POST'])
+def accept_invite(event_id):
+    """Accept a calendar invitation"""
+    try:
+        summary_logger.info(f"Accept invite request initiated for event: {event_id}")
+        user_id = session.get('user_id')
+        if not user_id:
+            summary_logger.warning("Unauthorized accept invite request")
+            return format_error_response(UNAUTHORIZED_ERROR, 401)
+
+        # Get user and check credentials
+        user = User.find_by_id(user_id)
+        if not user:
+            summary_logger.error(f"User {user_id} not found")
+            return format_error_response(USER_NOT_FOUND_ERROR, 401)
+            
+        credentials = user.credentials
+        if not credentials:
+            summary_logger.error(f"No valid credentials found for user {user_id}")
+            return format_error_response(NO_CREDENTIALS_ERROR, 401)
+
+        # Accept invite using calendar service
+        calendar_service = CalendarService(credentials)
+        success = calendar_service.accept_calendar_invite(event_id)
+        
+        return jsonify({
+            "success": success,
+            "message": "Calendar invite accepted successfully" if success else "Failed to accept invite"
+        })
+
+    except Exception as e:
+        log_error(summary_logger, e, "Failed to accept calendar invite")
         return format_error_response(str(e), 500)
 
 def _is_summary_stale(summary):

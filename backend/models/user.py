@@ -49,8 +49,13 @@ class User:
         if 'scopes' in credentials_dict:
             required_scopes = set(SCOPES)
             granted_scopes = set(credentials_dict['scopes'])
-            if not required_scopes.issubset(granted_scopes):
-                raise InvalidScopesError("Missing required scopes")
+            
+            # Check if there's a scope mismatch
+            if required_scopes != granted_scopes:
+                logger.warning(f"Scope mismatch for user {self.user_id}. Required: {required_scopes}, Granted: {granted_scopes}")
+                # Remove credentials to force re-auth with correct scopes
+                self.remove_credentials()
+                raise InvalidScopesError(f"Scope has changed from \"{' '.join(granted_scopes)}\" to \"{' '.join(required_scopes)}\".")
 
         update_data = {
             'email': self.email,
@@ -87,12 +92,11 @@ class User:
         if 'scopes' in credentials:
             required_scopes = set(SCOPES)
             stored_scopes = set(credentials['scopes'])
-            missing_scopes = required_scopes - stored_scopes
             
-            if missing_scopes:
-                # Log which scopes are missing for debugging
-                logger.warning(f"User {self.user_id} missing scopes: {missing_scopes}")
-                # If any required scopes are missing, remove credentials to force re-auth
+            # Check for exact scope match
+            if required_scopes != stored_scopes:
+                logger.warning(f"Scope mismatch for user {self.user_id}. Required: {required_scopes}, Stored: {stored_scopes}")
+                # Remove credentials to force re-auth with correct scopes
                 self.remove_credentials()
                 return None
                 

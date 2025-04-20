@@ -55,7 +55,7 @@ function LoginPage() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [dbStatus, setDbStatus] = useState('available');
-  const { isAuthenticated } = useAuthContext();
+  const { isAuthenticated, authError } = useAuthContext();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -65,7 +65,11 @@ function LoginPage() {
       const from = location.state?.from?.pathname || '/';
       navigate(from, { replace: true });
     }
-  }, [isAuthenticated, navigate, location]);
+    // Set error from authError if present
+    if (authError) {
+      setError(authError);
+    }
+  }, [isAuthenticated, navigate, location, authError]);
 
   const handleLogin = async () => {
     try {
@@ -75,6 +79,10 @@ function LoginPage() {
       const response = await auth.login();
       if (response.data?.authorization_url) {
         logger.info('Login authorization URL received');
+        // Check if there's a scope change message
+        if (response.data.error?.includes('Scope has changed')) {
+          logger.info('Scope change detected, redirecting to new auth URL');
+        }
         window.location.href = response.data.authorization_url;
       } else {
         setError('Invalid response from server');
@@ -85,7 +93,13 @@ function LoginPage() {
         setDbStatus('unavailable');
         setError('Database service is unavailable. Please try again later.');
       } else {
-        setError(getErrorMessage(err));
+        const errorMessage = err.response?.data?.message || getErrorMessage(err);
+        // Check if it's a scope change error
+        if (errorMessage.includes('Scope has changed')) {
+          setError('The application permissions have been updated. Please sign in again to grant the required permissions.');
+        } else {
+          setError(errorMessage);
+        }
       }
     } finally {
       setLoading(false);

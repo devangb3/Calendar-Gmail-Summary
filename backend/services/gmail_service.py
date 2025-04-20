@@ -23,7 +23,7 @@ class GmailService:
             log_error(api_logger, e, "Failed to initialize Gmail service")
             raise
 
-    def get_recent_emails(self, max_results=20):
+    def get_recent_emails(self, max_results=10):
         try:
             api_logger.info(f"Fetching recent emails, max_results={max_results}")
             time_threshold = (datetime.now(timezone.utc) - timedelta(days=7)).strftime('%Y/%m/%d')
