@@ -65,9 +65,9 @@ def get_summary():
 
             events = calendar_service.get_events(
                 time_min=datetime.now(timezone.utc).isoformat(),
-                time_max=(datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+                time_max=(datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
             )
-            raw_emails = gmail_service.get_recent_emails()
+            raw_emails = gmail_service.get_recent_emails(max_results=20)  # Get up to 20 emails for summary
             
             # Format emails to ensure threadId and other required fields are included
             formatted_emails = []

@@ -213,8 +213,8 @@ Remember to:
         thread_context = []
         separator = '-' * 40
 
-        # Include up to 2 previous messages for context
-        for msg in messages[-3:]:
+        # Include only up to 5 most recent messages for smart replies
+        for msg in messages[-5:]:
             thread_context.append(
                 f"From: {msg['from']}\n"
                 f"Subject: {msg['subject']}\n"
@@ -225,7 +225,7 @@ Remember to:
         thread_text = "\n".join(thread_context)
 
         # Now use a clean triple‑quoted f‑string
-        prompt = f"""Based on this email thread, generate appropriate reply suggestions:
+        prompt = f"""Based on this email thread (showing the {len(thread_context)} most recent messages), generate appropriate reply suggestions:
 
         Thread Context:
         {separator}
@@ -238,8 +238,7 @@ Remember to:
         3. Required next actions or decisions
         4. Professional email etiquette
         """
-        """Create a prompt for smart reply generation"""
-        
+
         return prompt
 
     def _format_events(self, events):
