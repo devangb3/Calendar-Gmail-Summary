@@ -10,10 +10,12 @@ import {
   ListItem,
   Divider,
   Chip,
-  Tooltip
+  Tooltip,
+  ButtonGroup
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import EventIcon from '@mui/icons-material/Event';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
@@ -127,6 +129,30 @@ const CalendarInvites = ({ onInviteAccepted }) => {
     }
   };
 
+  const handleDeclineInvite = async (eventId) => {
+    try {
+      setProcessing(prev => ({ ...prev, [eventId]: true }));
+      setError(null);
+      await calendar.declineInvite(eventId);
+      
+      // Remove the declined invite from the list
+      setPendingInvites(current => 
+        current.filter(invite => invite.id !== eventId)
+      );
+      
+      // Notify parent component
+      if (onInviteAccepted) {
+        onInviteAccepted();
+      }
+      
+    } catch (err) {
+      logger.error('Failed to decline invite:', err);
+      setError('Failed to decline calendar invite');
+    } finally {
+      setProcessing(prev => ({ ...prev, [eventId]: false }));
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
@@ -224,19 +250,30 @@ const CalendarInvites = ({ onInviteAccepted }) => {
               </Box>
             )}
             
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={processing[invite.id] ? 
-                <CircularProgress size={16} sx={{ mr: 1 }} /> : 
-                <CheckIcon />
-              }
-              onClick={() => handleAcceptInvite(invite.id)}
-              disabled={processing[invite.id]}
-              sx={{ mt: 1 }}
-            >
-              {processing[invite.id] ? 'Accepting...' : 'Accept Invite'}
-            </Button>
+            <ButtonGroup variant="contained" sx={{ mt: 1 }}>
+              <Button
+                color="primary"
+                startIcon={processing[invite.id] ? 
+                  <CircularProgress size={16} /> : 
+                  <CheckIcon />
+                }
+                onClick={() => handleAcceptInvite(invite.id)}
+                disabled={processing[invite.id]}
+              >
+                {processing[invite.id] ? 'Accepting...' : 'Accept'}
+              </Button>
+              <Button
+                color="error"
+                startIcon={processing[invite.id] ? 
+                  <CircularProgress size={16} /> : 
+                  <CloseIcon />
+                }
+                onClick={() => handleDeclineInvite(invite.id)}
+                disabled={processing[invite.id]}
+              >
+                {processing[invite.id] ? 'Declining...' : 'Decline'}
+              </Button>
+            </ButtonGroup>
           </InviteItem>
           {index < pendingInvites.length - 1 && <Divider />}
         </React.Fragment>

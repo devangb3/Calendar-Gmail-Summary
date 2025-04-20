@@ -135,6 +135,10 @@ export const calendar = {
   acceptInvite: (eventId) => {
     logger.info('Accepting calendar invite:', eventId);
     return api.post(`/accept-invite/${eventId}`);
+  },
+  declineInvite: (eventId) => {
+    logger.info('Declining calendar invite:', eventId);
+    return api.post(`/decline-invite/${eventId}`);
   }
 };
 

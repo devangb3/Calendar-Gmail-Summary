@@ -115,6 +115,51 @@ class CalendarService:
             log_error(api_logger, e, f"Failed to accept calendar invite for event: {event_id}")
             raise
             
+    def decline_calendar_invite(self, event_id):
+        """Decline a calendar invitation"""
+        try:
+            api_logger.info(f"Declining calendar invite for event: {event_id}")
+            
+            # Get the event first to check if we need to handle it
+            event = self.service.events().get(
+                calendarId='primary',
+                eventId=event_id
+            ).execute()
+            
+            # Find the attendee that matches the authenticated user
+            user_email = self.service.calendarList().get(calendarId='primary').execute().get('id')
+            user_attendee = next(
+                (attendee for attendee in event.get('attendees', [])
+                if attendee.get('email') == user_email),
+                None
+            )
+            
+            if not user_attendee:
+                api_logger.warning(f"User not found in attendee list for event: {event_id}")
+                return False
+                
+            if user_attendee.get('responseStatus') == 'declined':
+                api_logger.info("Event already declined")
+                return True
+                
+            # Update the attendee's response status
+            user_attendee['responseStatus'] = 'declined'
+            
+            # Update the event
+            self.service.events().patch(
+                calendarId='primary',
+                eventId=event_id,
+                body={'attendees': event.get('attendees', [])},
+                sendUpdates='all'  # Notify other attendees
+            ).execute()
+            
+            api_logger.info(f"Successfully declined calendar invite for event: {event_id}")
+            return True
+            
+        except Exception as e:
+            log_error(api_logger, e, f"Failed to decline calendar invite for event: {event_id}")
+            raise
+
     def get_pending_invites(self):
         """Get list of pending calendar invitations"""
         try:
