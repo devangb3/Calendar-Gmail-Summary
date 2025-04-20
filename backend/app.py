@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, session, redirect
 from flask_cors import CORS
 import ssl
+import atexit
 
 from config.settings import (
     FLASK_SECRET_KEY,
@@ -11,6 +12,7 @@ from config.settings import (
 )
 from config.database import Database
 from services.auth_service import AuthService
+from services.scheduler_service import SchedulerService
 from models.user import User
 from utils.helpers import format_error_response
 from utils.logger import auth_logger, log_error
@@ -30,8 +32,15 @@ db = Database.get_instance()
 if not db.ensure_connected():
     print("Warning: Failed to establish database connection. Some features may not work.")
 
-# Create auth service instance
+# Initialize services
 auth_service = AuthService()
+scheduler_service = SchedulerService.get_instance()
+
+# Start the scheduler
+scheduler_service.start()
+
+# Register scheduler shutdown on app exit
+atexit.register(scheduler_service.stop)
 
 @app.route('/oauth2callback')
 def oauth2callback():

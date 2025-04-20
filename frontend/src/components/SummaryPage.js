@@ -80,12 +80,12 @@ function SummaryPage() {
   const [showSmartReplyModal, setShowSmartReplyModal] = useState(false);
   const navigate = useNavigate();
 
-  const fetchSummary = useCallback(async () => {
+  const fetchSummary = useCallback(async (forceRefresh = false) => {
     try {
-      logger.info('Fetching summary data');
+      logger.info('Fetching summary data', { forceRefresh });
       setLoading(true);
       setError(null);
-      const response = await summary.get();
+      const response = await summary.get(forceRefresh);
       setSummaryData(response.data);
       setDbStatus('available');
       logger.info('Summary data fetched successfully', { cached: response.data?.cached });
@@ -129,7 +129,7 @@ function SummaryPage() {
 
   const handleRefresh = () => {
     logger.info('Manual refresh initiated');
-    fetchSummary();
+    fetchSummary(true);
   };
 
   const handleSmartReply = (email) => {

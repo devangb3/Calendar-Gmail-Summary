@@ -103,9 +103,9 @@ export const auth = {
 };
 
 export const summary = {
-  get: () => {
-    logger.info('Fetching summary');
-    return api.get('/summary');
+  get: (forceRefresh = false) => {
+    logger.info('Fetching summary', { forceRefresh });
+    return api.get('/summary' + (forceRefresh ? '?refresh=true' : ''));
   },
   getSmartReplies: (threadId) => {
     logger.info('Fetching smart replies for thread:', threadId);

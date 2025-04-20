@@ -4,6 +4,7 @@ from models.summary import Summary
 from services.calendar_service import CalendarService
 from services.gmail_service import GmailService
 from services.gemini_service import GeminiService, GeminiServiceError
+from services.scheduler_service import SchedulerService
 from utils.helpers import format_error_response
 from utils.logger import summary_logger, log_error
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,7 @@ SEND_REPLY_ERROR = "Failed to send reply"
 DB_UNAVAILABLE_ERROR = "Database service unavailable"
 
 summary_bp = Blueprint('summary', __name__)
+scheduler_service = SchedulerService.get_instance()
 
 @summary_bp.route('/summary')
 def get_summary():
@@ -41,84 +43,44 @@ def get_summary():
             summary_logger.error(f"No valid credentials found for user {user_id}")
             return format_error_response(NO_CREDENTIALS_ERROR, 401)
 
-        # Check for cached summary
-        cached_summary = Summary.get_recent_summary(user_id)
-        if cached_summary and not _is_summary_stale(cached_summary):
-            summary_logger.info(f"Returning cached summary for user {user_id}")
-            # Get fresh emails and events even when using cached summary
-            try:
+        # Check for query parameter indicating refresh request
+        force_refresh = request.args.get('refresh', '').lower() == 'true'
+        
+        # Check for cached summary if not forcing refresh
+        if not force_refresh:
+            cached_summary = Summary.get_recent_summary(user_id)
+            if cached_summary and not _is_summary_stale(cached_summary):
+                summary_logger.info(f"Returning cached summary for user {user_id}")
                 calendar_service = CalendarService(credentials)
                 gmail_service = GmailService(credentials)
-                events = calendar_service.get_events()
-                emails = gmail_service.get_recent_emails()
-            except Exception as e:
-                log_error(summary_logger, e, "Failed to fetch data for cached summary")
-                # Continue with just the summary if data fetch fails
-                return jsonify({
-                    "summary": cached_summary.summary_text,
-                    "cached": True,
-                    "generated_at": cached_summary.generated_at.isoformat()
-                })
+                try:
+                    events = calendar_service.get_events()
+                    emails = gmail_service.get_recent_emails()
+                    return jsonify({
+                        "summary": cached_summary.summary_text,
+                        "emails": emails,
+                        "events": events,
+                        "cached": True,
+                        "generated_at": cached_summary.generated_at.isoformat()
+                    })
+                except Exception as e:
+                    log_error(summary_logger, e, "Failed to fetch data for cached summary")
+                    return jsonify({
+                        "summary": cached_summary.summary_text,
+                        "cached": True,
+                        "generated_at": cached_summary.generated_at.isoformat()
+                    })
 
-            return jsonify({
-                "summary": cached_summary.summary_text,
-                "emails": emails,
-                "events": events,
-                "cached": True,
-                "generated_at": cached_summary.generated_at.isoformat()
-            })
-
-        # Initialize services
+        # Force refresh or no valid cache - use scheduler to refresh digest
         try:
-            summary_logger.info("Initializing services for fresh summary generation")
-            calendar_service = CalendarService(credentials)
-            gmail_service = GmailService(credentials)
-            gemini_service = GeminiService()
+            summary_logger.info(f"Refreshing digest for user {user_id}")
+            result = scheduler_service.refresh_user_digest(user_id)
+            if not result:
+                return format_error_response("Failed to refresh digest", 500)
+            return jsonify(result)
         except Exception as e:
-            log_error(summary_logger, e, "Failed to initialize services")
-            return format_error_response(INIT_SERVICES_ERROR, 500)
-
-        # Fetch calendar events and emails
-        try:
-            summary_logger.info("Fetching calendar events and emails")
-            events = calendar_service.get_events()
-            emails = gmail_service.get_recent_emails()
-            summary_logger.info(f"Fetched {len(events)} events and {len(emails)} emails")
-        except Exception as e:
-            log_error(summary_logger, e, "Failed to fetch events or emails")
-            return format_error_response(FETCH_DATA_ERROR, 500)
-
-        # Generate summary
-        try:
-            summary_logger.info("Generating new summary")
-            summary_text = gemini_service.generate_summary(events, emails)
-            if not summary_text:
-                summary_logger.error("Received empty summary from Gemini service")
-                return format_error_response("Failed to generate summary", 500)
-        except GeminiServiceError as e:
-            log_error(summary_logger, e, "Gemini service error")
+            log_error(summary_logger, e, "Failed to refresh digest")
             return format_error_response(str(e), 500)
-        except Exception as e:
-            log_error(summary_logger, e, "Unexpected error during summary generation")
-            return format_error_response("Failed to generate summary", 500)
-
-        # Save new summary
-        try:
-            summary_logger.info(f"Saving new summary for user {user_id}")
-            summary = Summary(user_id, summary_text)
-            summary.save()
-        except Exception as e:
-            log_error(summary_logger, e, "Failed to save summary")
-            # Continue anyway since we have the summary text
-            
-        summary_logger.info("Summary generation completed successfully")
-        return jsonify({
-            "summary": summary_text,
-            "emails": emails,  # Include emails in response
-            "events": events,  # Include events in response
-            "cached": False,
-            "generated_at": datetime.now(timezone.utc).isoformat()
-        })
 
     except Exception as e:
         log_error(summary_logger, e, "Unexpected error in summary endpoint")
