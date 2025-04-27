@@ -85,7 +85,8 @@ def oauth2callback():
             user = User(user_info['sub'], user_info['email'], user_info.get('name', ''))
             user.save_credentials(token)
             session['user_id'] = user_info['sub']
-            auth_logger.info(f"User authenticated: {user_info['sub']}")
+            session.permanent = True
+            auth_logger.info(f"User authenticated: {session['user_id']}")
             return redirect(FRONTEND_URL)
         except Exception as e:
             log_error(auth_logger, e, "Failed to save user")
