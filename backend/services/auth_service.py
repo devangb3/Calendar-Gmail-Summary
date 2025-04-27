@@ -42,7 +42,7 @@ class AuthService:
             self.flow = Flow.from_client_secrets_file(
                 CLIENT_SECRETS_FILE,
                 scopes=SCOPES,
-                redirect_uri=os.getenv('OAUTH_REDIRECT_URI', 'https://localhost:5000/oauth2callback')
+                redirect_uri=GOOGLE_REDIRECT_URI
             )
             auth_logger.info(f"Flow redirect URI: {self.flow.redirect_uri}")
             authorization_url, _ = self.flow.authorization_url(
