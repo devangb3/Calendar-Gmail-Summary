@@ -60,9 +60,9 @@ function LoginPage() {
   const location = useLocation();
 
   useEffect(() => {
-    // If already authenticated, redirect to home or the page they were trying to access
+    // If already authenticated, redirect to summary page or the page they were trying to access
     if (isAuthenticated) {
-      const from = location.state?.from?.pathname || '/';
+      const from = location.state?.from?.pathname || '/summary';
       navigate(from, { replace: true });
     }
     // Set error from authError if present
@@ -79,10 +79,8 @@ function LoginPage() {
       const response = await auth.login();
       if (response.data?.authorization_url) {
         logger.info('Login authorization URL received');
-        // Check if there's a scope change message
-        if (response.data.error?.includes('Scope has changed')) {
-          logger.info('Scope change detected, redirecting to new auth URL');
-        }
+        // Store the intended destination
+        sessionStorage.setItem('redirectAfterLogin', '/summary');
         window.location.href = response.data.authorization_url;
       } else {
         setError('Invalid response from server');
@@ -93,13 +91,7 @@ function LoginPage() {
         setDbStatus('unavailable');
         setError('Database service is unavailable. Please try again later.');
       } else {
-        const errorMessage = err.response?.data?.message || getErrorMessage(err);
-        // Check if it's a scope change error
-        if (errorMessage.includes('Scope has changed')) {
-          setError('The application permissions have been updated. Please sign in again to grant the required permissions.');
-        } else {
-          setError(errorMessage);
-        }
+        setError(getErrorMessage(err));
       }
     } finally {
       setLoading(false);

@@ -83,6 +83,14 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Navigate to="/summary" replace />
+          </ProtectedRoute>
+        }
+      />
       <Route path="*" element={<Navigate to="/summary" replace />} />
     </Routes>
   );
