@@ -5,7 +5,7 @@ load_dotenv()
 
 # Flask Configuration
 FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "supersecretkey")
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://localhost:3001/summary")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://calendar-gmail-summary-frontend.onrender.com")
 
 # MongoDB Configuration
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://127.0.0.1:27017/")
@@ -33,6 +33,14 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = 'models/gemini-2.0-flash'
 
 # CORS Configuration
-CORS_ORIGINS = ["http://localhost:3000", "http://localhost:3001", "https://localhost:3001", "https://calendar-gmail-summary-frontend.onrender.com"]
-CORS_HEADERS = ["Content-Type", "Authorization"]
+CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:3001", 
+    "https://localhost:3001",
+    "https://calendar-gmail-summary-frontend.onrender.com",
+    "https://calendar-gmail-summary-frontend.onrender.com/",
+    "https://calendar-gmail-summary-frontend.onrender.com/summary",
+    "https://calendar-gmail-summary-frontend.onrender.com/login"
+]
+CORS_HEADERS = ["Content-Type", "Authorization", "Cookie"]
 CORS_METHODS = ["GET", "POST", "OPTIONS"]
