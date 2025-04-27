@@ -60,7 +60,7 @@ def check_auth_status():
     """Check if the user is currently authenticated."""
     user_id = session.get('user_id')
     is_authenticated = user_id is not None
-    
+    auth_logger.info(f"Auth check initiated for user: {user_id}")
     if is_authenticated:
         # Optionally, verify the user still exists and credentials are valid
         user = User.find_by_id(user_id)
