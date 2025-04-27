@@ -96,7 +96,7 @@ export const auth = {
     return api.get('/auth/logout'); // Updated path
   },
   check: () => {
-    logger.debug('Checking authentication status via API');
+    logger.info('Checking authentication status via API');
     // Use axios instance and correct backend endpoint
     return api.get('/auth/check'); 
   }

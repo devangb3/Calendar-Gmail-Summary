@@ -1,15 +1,21 @@
 import os
+from flask import session
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+import json
+
 from utils.logger import auth_logger, log_error
 from config.settings import (
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
     GOOGLE_REDIRECT_URI,
     CLIENT_SECRETS_FILE,
-    SCOPES
+    SCOPES,
+    FRONTEND_URL
 )
+from models.user import User
 
 class AuthServiceError(Exception):
     """Base exception for authentication service errors."""
@@ -26,120 +32,86 @@ class CredentialsError(AuthServiceError):
 class AuthService:
     def __init__(self):
         self.flow = None
-        self.state = None
-
-    def _create_flow(self):
-        """Create a new OAuth flow instance."""
-        try:
-            return Flow.from_client_secrets_file(
-                CLIENT_SECRETS_FILE,
-                scopes=SCOPES,
-                redirect_uri=GOOGLE_REDIRECT_URI
-            )
-        except Exception as e:
-            log_error(auth_logger, e, "Failed to create OAuth flow")
-            raise
+        self._credentials = None
+        auth_logger.info("AuthService initialized")
 
     def get_authorization_url(self):
-        """Generate the authorization URL for Google OAuth."""
+        """Generate authorization URL for OAuth flow"""
         try:
-            self.flow = self._create_flow()
-            authorization_url, state = self.flow.authorization_url(
-                access_type='offline',
-                include_granted_scopes='false',  # Don't include previously granted scopes
-                prompt='consent',  # Always show consent screen
-                state='calendar_summary_auth'
+            auth_logger.info("Generating authorization URL")
+            self.flow = Flow.from_client_secrets_file(
+                CLIENT_SECRETS_FILE,
+                scopes=SCOPES,
+                redirect_uri=os.getenv('OAUTH_REDIRECT_URI', 'https://localhost:5000/oauth2callback')
             )
-            self.state = state
-            auth_logger.info(f"Generated authorization URL successfully: {authorization_url}")
+            auth_logger.info(f"Flow redirect URI: {self.flow.redirect_uri}")
+            authorization_url, _ = self.flow.authorization_url(
+                access_type='offline',
+                include_granted_scopes='true',
+                prompt='consent'
+            )
+            auth_logger.info("Authorization URL generated successfully")
             return authorization_url
         except Exception as e:
-            log_error(auth_logger, e, "Failed to generate authorization URL")
+            auth_logger.error(f"Error generating authorization URL: {str(e)}")
             raise
 
     def get_token(self, authorization_response, base_url):
-        """Exchange authorization code for tokens."""
+        """Exchange authorization code for tokens"""
         try:
-            # Create new flow if none exists (e.g. after server restart)
+            auth_logger.info("Exchanging authorization code for tokens")
+            auth_logger.info(f"Authorization response URL: {authorization_response}")
+            auth_logger.info(f"Base URL: {base_url}")
+            
             if not self.flow:
-                auth_logger.info("No existing flow found, creating new one")
-                self.flow = self._create_flow()
+                auth_logger.error("Flow not initialized before token exchange")
+                raise ValueError("Authorization flow not initialized")
 
-            auth_logger.debug("Fetching token with authorization response")
-            self.flow.fetch_token(
-                authorization_response=authorization_response,
-                authorization_base_url=base_url
-            )
+            # Fetch the token
+            self.flow.fetch_token(authorization_response=authorization_response)
+            self._credentials = self.flow.credentials
             
-            granted_scopes = set(self.flow.credentials.scopes)
-            required_scopes = set(SCOPES)
+            auth_logger.info("Token exchange successful")
+            auth_logger.info(f"Credentials valid: {self._credentials.valid}")
+            auth_logger.info(f"Credentials expired: {self._credentials.expired}")
             
-            # Check for exact scope match instead of subset
-            if required_scopes != granted_scopes:
-                missing_scopes = required_scopes - granted_scopes
-                extra_scopes = granted_scopes - required_scopes
-                error_msg = []
-                if missing_scopes:
-                    error_msg.append(f"Missing required scopes: {', '.join(missing_scopes)}")
-                if extra_scopes:
-                    error_msg.append(f"Extra scopes granted: {', '.join(extra_scopes)}")
-                raise ScopeMismatchError(". ".join(error_msg))
+            # Convert credentials to dict for storage
+            creds_dict = self._credentials_to_dict(self._credentials)
+            auth_logger.info(f"Credentials type and presence of token: {{'type': {type(creds_dict)}, 'has_token': bool(creds_dict.get('token'))}}")
             
-            auth_logger.info("Successfully obtained access token with correct scopes")
-            return {
-                'token': self.flow.credentials.token,
-                'refresh_token': self.flow.credentials.refresh_token,
-                'token_uri': self.flow.credentials.token_uri,
-                'client_id': self.flow.credentials.client_id,
-                'client_secret': self.flow.credentials.client_secret,
-                'scopes': list(granted_scopes)
-            }
+            return creds_dict
         except Exception as e:
-            log_error(auth_logger, e, "Failed to fetch token")
+            auth_logger.error(f"Token exchange error: {str(e)}")
             raise
 
     def get_user_info(self):
-        """Get user information from Google."""
+        """Get user info from Google"""
         try:
-            if not self.flow or not self.flow.credentials:
-                auth_logger.error("No valid OAuth flow or credentials available")
+            auth_logger.info("Fetching user info")
+            if not self._credentials or not self._credentials.valid:
+                auth_logger.error("Invalid credentials when fetching user info")
                 return None
-                
-            auth_logger.debug("Attempting to fetch user info from Google")
-            service = build('oauth2', 'v2', credentials=self.flow.credentials)
-            userinfo = service.userinfo().get().execute()
-            
-            if not userinfo:
-                auth_logger.error("Empty response from userinfo endpoint")
-                return None
-                
-            # Map 'id' to 'sub' if 'sub' is not present
-            if 'id' in userinfo and 'sub' not in userinfo:
-                userinfo['sub'] = userinfo['id']
-                
-            required_fields = ['sub', 'email']
-            missing_fields = [field for field in required_fields if field not in userinfo]
-            if missing_fields:
-                auth_logger.error(f"Missing required fields: {missing_fields}")
-                return None
-                
-            auth_logger.info("Successfully retrieved user info")
-            return userinfo
-        except Exception as e:
-            log_error(auth_logger, e, "Failed to get user info")
-            return None
 
-    @staticmethod
-    def create_credentials(credentials_dict):
-        """Create credentials object from dictionary."""
+            service = build('oauth2', 'v2', credentials=self._credentials)
+            user_info = service.userinfo().get().execute()
+            auth_logger.info(f"User info fetched successfully for email: {user_info.get('email')}")
+            return user_info
+        except Exception as e:
+            auth_logger.error(f"Error fetching user info: {str(e)}")
+            raise
+
+    def _credentials_to_dict(self, credentials):
+        """Convert Google credentials to dict for storage"""
         try:
-            return Credentials(
-                token=credentials_dict['token'],
-                refresh_token=credentials_dict.get('refresh_token'),
-                token_uri=credentials_dict['token_uri'],
-                client_id=credentials_dict['client_id'],
-                client_secret=credentials_dict['client_secret'],
-                scopes=credentials_dict['scopes']
-            )
-        except KeyError as e:
-            raise CredentialsError(f"Missing required credential field: {e}")
+            auth_logger.info("Converting credentials to dict")
+            return {
+                'token': credentials.token,
+                'refresh_token': credentials.refresh_token,
+                'token_uri': credentials.token_uri,
+                'client_id': credentials.client_id,
+                'client_secret': credentials.client_secret,
+                'scopes': credentials.scopes
+            }
+        except Exception as e:
+            auth_logger.error(f"Error converting credentials to dict: {str(e)}")
+            raise

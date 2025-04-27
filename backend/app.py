@@ -53,6 +53,10 @@ def oauth2callback():
     """Handle OAuth callback at root level"""
     try:
         auth_logger.info("OAuth callback initiated")
+        auth_logger.info(f"Request headers: {dict(request.headers)}")
+        auth_logger.info(f"Request cookies before: {dict(request.cookies)}")
+        auth_logger.info(f"Session before: {dict(session)}")
+        
         code = request.args.get('code')
         if not code:
             auth_logger.error("No authorization code received in callback")
@@ -91,8 +95,16 @@ def oauth2callback():
             user = User(user_info['sub'], user_info['email'], user_info.get('name', ''))
             user.save_credentials(token)
             session['user_id'] = user_info['sub']
+            session.modified = True  # Ensure session is saved
+            
             auth_logger.info(f"User authenticated: {session['user_id']}")
-            return redirect(FRONTEND_URL)
+            auth_logger.info(f"Session after setting user_id: {dict(session)}")
+            
+            response = redirect(FRONTEND_URL)
+            auth_logger.info(f"Response headers: {dict(response.headers)}")
+            auth_logger.info(f"Final cookies: {dict(request.cookies)}")
+            return response
+            
         except Exception as e:
             log_error(auth_logger, e, "Failed to save user")
             return format_error_response(str(e), 500)
