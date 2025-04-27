@@ -51,7 +51,7 @@ class AuthService:
                 state='calendar_summary_auth'
             )
             self.state = state
-            auth_logger.info("Generated authorization URL successfully", authorization_url=authorization_url)
+            auth_logger.info(f"Generated authorization URL successfully: {authorization_url}")
             return authorization_url
         except Exception as e:
             log_error(auth_logger, e, "Failed to generate authorization URL")
