@@ -5,7 +5,7 @@ load_dotenv()
 
 # Flask Configuration
 FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "supersecretkey")
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://localhost:3001")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://localhost:3001/summary")
 
 # MongoDB Configuration
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://127.0.0.1:27017/")
