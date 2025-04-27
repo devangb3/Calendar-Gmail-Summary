@@ -1,9 +1,9 @@
 import axios from 'axios';
 import logger from './logger';
 
-// Use environment variables or default to HTTPS and port 3001
-const API_URL = process.env.REACT_APP_API_URL || 'https://localhost:5000';
-const FRONTEND_URL = process.env.REACT_APP_FRONTEND_URL || 'https://localhost:3001';
+// Use environment variables with production URL fallback for Render deployment
+const API_URL = process.env.REACT_APP_API_URL || 'https://calendar-gmail-backend.onrender.com';
+const FRONTEND_URL = process.env.REACT_APP_FRONTEND_URL || 'https://calendar-gmail-summary-frontend.onrender.com';
 
 // Custom error class for API errors
 class ApiError extends Error {
