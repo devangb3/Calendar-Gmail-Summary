@@ -20,6 +20,12 @@ from utils.logger import auth_logger, log_error
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
 
+# Configure session cookie settings
+app.config['SESSION_COOKIE_SECURE'] = True  # Only send cookie over HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to session cookie
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Allow cross-origin cookies
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # Session lifetime in seconds (1 hour)
+
 # Configure CORS
 CORS(app, 
      origins=CORS_ORIGINS,
@@ -85,7 +91,6 @@ def oauth2callback():
             user = User(user_info['sub'], user_info['email'], user_info.get('name', ''))
             user.save_credentials(token)
             session['user_id'] = user_info['sub']
-            session.permanent = True
             auth_logger.info(f"User authenticated: {session['user_id']}")
             return redirect(FRONTEND_URL)
         except Exception as e:
