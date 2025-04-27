@@ -31,3 +31,5 @@ __pycache__/
 *.pyc
 *.log
 test_model.py
+render_pinger.py
+frontend/build/
