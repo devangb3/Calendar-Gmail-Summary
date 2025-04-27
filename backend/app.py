@@ -100,8 +100,8 @@ from blueprints.auth import auth_bp
 from blueprints.summary import summary_bp
 
 # Register blueprints
-app.register_blueprint(auth_bp, url_prefix='/auth')  # auth_bp now includes the /auth prefix
-app.register_blueprint(summary_bp)
+app.register_blueprint(auth_bp, url_prefix='/auth')
+app.register_blueprint(summary_bp, url_prefix='/api')  # Add prefix for summary routes
 
 @app.route('/')
 def index():

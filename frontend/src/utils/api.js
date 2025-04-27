@@ -1,9 +1,9 @@
 import axios from 'axios';
 import logger from './logger';
 
-// Use environment variables or default to HTTPS and port 3001
-const API_URL = process.env.REACT_APP_API_URL || 'https://localhost:5000';
-const FRONTEND_URL = process.env.REACT_APP_FRONTEND_URL || 'https://localhost:3001';
+// Use environment variables with production URL fallback for Render deployment
+const API_URL = process.env.REACT_APP_API_URL || 'https://calendar-gmail-backend.onrender.com';
+const FRONTEND_URL = process.env.REACT_APP_FRONTEND_URL || 'https://calendar-gmail-summary-frontend.onrender.com';
 
 // Custom error class for API errors
 class ApiError extends Error {
@@ -105,19 +105,19 @@ export const auth = {
 export const summary = {
   get: (forceRefresh = false) => {
     logger.info('Fetching summary', { forceRefresh });
-    return api.get('/summary' + (forceRefresh ? '?refresh=true' : ''));
+    return api.get('/api/summary' + (forceRefresh ? '?refresh=true' : ''));
   },
   getSmartReplies: (threadId) => {
     logger.info('Fetching smart replies for thread:', threadId);
-    return api.get(`/smart-replies/${threadId}`);
+    return api.get(`/api/smart-replies/${threadId}`);
   },
   sendReply: (data) => {
     logger.info('Sending email reply');
-    return api.post('/send-reply', data);
+    return api.post('/api/send-reply', data);
   },
   getAudioSummary: () => {
     logger.info('Fetching audio summary');
-    return fetch(`${API_URL}/audio-summary`, {
+    return fetch(`${API_URL}/api/audio-summary`, {
       method: 'GET',
       credentials: 'include',
       headers: {
@@ -130,15 +130,15 @@ export const summary = {
 export const calendar = {
   getPendingInvites: () => {
     logger.info('Fetching pending calendar invites');
-    return api.get('/pending-invites');
+    return api.get('/api/pending-invites');
   },
   acceptInvite: (eventId) => {
     logger.info('Accepting calendar invite:', eventId);
-    return api.post(`/accept-invite/${eventId}`);
+    return api.post(`/api/accept-invite/${eventId}`);
   },
   declineInvite: (eventId) => {
     logger.info('Declining calendar invite:', eventId);
-    return api.post(`/decline-invite/${eventId}`);
+    return api.post(`/api/decline-invite/${eventId}`);
   }
 };
 

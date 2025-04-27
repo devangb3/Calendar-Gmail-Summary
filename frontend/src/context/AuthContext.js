@@ -15,6 +15,16 @@ export function AuthProvider({ children }) {
       const authenticated = response.data?.authenticated === true;
       setIsAuthenticated(authenticated);
       logger.info('Auth status check complete', { authenticated });
+      
+      // If authenticated and there's a stored redirect path, navigate to it
+      if (authenticated) {
+        const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+        if (redirectPath) {
+          sessionStorage.removeItem('redirectAfterLogin');
+          window.location.href = redirectPath;
+        }
+      }
+      
       return authenticated;
     } catch (error) {
       if (error.response?.status === 401) {
