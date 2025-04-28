@@ -54,8 +54,6 @@ def oauth2callback():
     try:
         auth_logger.info("OAuth callback initiated")
         auth_logger.info(f"Request headers: {dict(request.headers)}")
-        auth_logger.info(f"Request cookies before: {dict(request.cookies)}")
-        auth_logger.info(f"Session before: {dict(session)}")
         
         code = request.args.get('code')
         if not code:
@@ -85,25 +83,27 @@ def oauth2callback():
             return format_error_response(str(e), 500)
 
         # Get user info
-        user_info = auth_service.get_user_info()
-        if not user_info:
-            auth_logger.error("Failed to get user info")
-            return format_error_response("Failed to get user info", 500)
-
-        # Save user and credentials
         try:
+            user_info = auth_service.get_user_info()
+            if not user_info:
+                auth_logger.error("Failed to get user info")
+                return format_error_response("Failed to get user info", 500)
+                
+            # Validate required fields
+            required_fields = ['sub', 'email']
+            missing_fields = [field for field in required_fields if field not in user_info]
+            if missing_fields:
+                auth_logger.error(f"Missing required user info fields: {missing_fields}")
+                auth_logger.error(f"User info received: {user_info}")
+                return format_error_response("Incomplete user information received from Google", 500)
+
             user = User(user_info['sub'], user_info['email'], user_info.get('name', ''))
             user.save_credentials(token)
             session['user_id'] = user_info['sub']
-            session.modified = True  # Ensure session is saved
+            session.modified = True
             
             auth_logger.info(f"User authenticated: {session['user_id']}")
-            auth_logger.info(f"Session after setting user_id: {dict(session)}")
-            
-            response = redirect(FRONTEND_URL)
-            auth_logger.info(f"Response headers: {dict(response.headers)}")
-            auth_logger.info(f"Final cookies: {dict(request.cookies)}")
-            return response
+            return redirect(FRONTEND_URL)
             
         except Exception as e:
             log_error(auth_logger, e, "Failed to save user")

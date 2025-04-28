@@ -31,7 +31,6 @@ class CredentialsError(AuthServiceError):
 
 class AuthService:
     def __init__(self):
-        self.flow = None
         self._credentials = None
         auth_logger.info("AuthService initialized")
 
@@ -39,13 +38,22 @@ class AuthService:
         """Generate authorization URL for OAuth flow"""
         try:
             auth_logger.info("Generating authorization URL")
-            self.flow = Flow.from_client_secrets_file(
+            flow = Flow.from_client_secrets_file(
                 CLIENT_SECRETS_FILE,
                 scopes=SCOPES,
                 redirect_uri=GOOGLE_REDIRECT_URI
             )
-            auth_logger.info(f"Flow redirect URI: {self.flow.redirect_uri}")
-            authorization_url, _ = self.flow.authorization_url(
+            # Store flow state in session
+            auth_logger.info("Created flow", flow)
+            session['flow_state'] = {
+                'client_id': flow.client_config['client_id'],
+                'client_secret': flow.client_config['client_secret'],
+                'redirect_uri': flow.redirect_uri,
+                'scopes': SCOPES
+            }
+            
+            auth_logger.info(f"Flow redirect URI: {flow.redirect_uri}")
+            authorization_url, _ = flow.authorization_url(
                 access_type='offline',
                 include_granted_scopes='true',
                 prompt='consent'
@@ -62,14 +70,27 @@ class AuthService:
             auth_logger.info("Exchanging authorization code for tokens")
             auth_logger.info(f"Authorization response URL: {authorization_response}")
             auth_logger.info(f"Base URL: {base_url}")
-            
-            if not self.flow:
-                auth_logger.error("Flow not initialized before token exchange")
+            auth_logger.info(f"Session before token exchange: {dict(session)}")
+            # Retrieve flow state from session
+            flow_state = session.get('flow_state')
+            if not flow_state:
+                auth_logger.error("Flow state not found in session")
                 raise ValueError("Authorization flow not initialized")
 
+            # Recreate flow from session state
+            flow = Flow.from_client_secrets_file(
+                CLIENT_SECRETS_FILE,
+                scopes=flow_state['scopes'],
+                redirect_uri=flow_state['redirect_uri']
+            )
+
             # Fetch the token
-            self.flow.fetch_token(authorization_response=authorization_response)
-            self._credentials = self.flow.credentials
+            flow.fetch_token(authorization_response=authorization_response)
+            self._credentials = flow.credentials
+            
+            # Clean up session
+            if 'flow_state' in session:
+                del session['flow_state']
             
             auth_logger.info("Token exchange successful")
             auth_logger.info(f"Credentials valid: {self._credentials.valid}")
@@ -94,7 +115,18 @@ class AuthService:
 
             service = build('oauth2', 'v2', credentials=self._credentials)
             user_info = service.userinfo().get().execute()
-            auth_logger.info(f"User info fetched successfully for email: {user_info.get('email')}")
+            auth_logger.info(f"Raw user info response: {user_info}")
+            
+            # Ensure we have a user ID (sub or id)
+            if 'sub' not in user_info and 'id' in user_info:
+                user_info['sub'] = user_info['id']
+                auth_logger.info("Using 'id' as 'sub' for user identification")
+            
+            if 'sub' not in user_info:
+                auth_logger.error("No user ID found in response")
+                raise ValueError("No user ID (sub) found in Google response")
+                
+            auth_logger.info(f"User info processed successfully for email: {user_info.get('email')}")
             return user_info
         except Exception as e:
             auth_logger.error(f"Error fetching user info: {str(e)}")

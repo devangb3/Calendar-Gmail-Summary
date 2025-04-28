@@ -20,7 +20,7 @@ DATABASE_NAME = 'calendar_summary_db'
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = "https://calendar-gmail-backend.onrender.com/oauth2callback"
+GOOGLE_REDIRECT_URI = "https://localhost:5000/oauth2callback"
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 CLIENT_SECRETS_FILE = "client_secret.json"
 
@@ -29,6 +29,7 @@ SCOPES = [
     'openid',  # Required for user ID
     'https://www.googleapis.com/auth/userinfo.profile',  # Required for user profile
     'https://www.googleapis.com/auth/userinfo.email',  # Required for email
+    'https://www.googleapis.com/auth/calendar.readonly',  # For reading calendar events
     'https://www.googleapis.com/auth/calendar',  # Full calendar access for reading and writing
     'https://www.googleapis.com/auth/gmail.readonly',  # For reading gmail
     'https://www.googleapis.com/auth/gmail.send',  # For sending emails
